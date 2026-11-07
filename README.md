@@ -25,3 +25,9 @@ Turn on **Reformat code** in **Settings → Tools → Actions on Save**, so Mago
   **Settings → Editor → Code Style → PHP** page no longer affects them.
 * Only whole files are formatted. Mago cannot format a fragment, so selections and "changed lines
   only" ranges are handled by the IDE's own formatter.
+
+### Upcoming Features
+
+* [Linter](https://mago.carthage.software/1.59.0/en/tools/linter/overview/) support.
+* [Analyzer](https://mago.carthage.software/1.59.0/en/tools/analyzer/overview/) support.
+* [Guard](https://mago.carthage.software/1.59.0/en/tools/guard/overview/) support.
