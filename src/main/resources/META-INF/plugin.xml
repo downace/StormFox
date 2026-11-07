@@ -13,8 +13,10 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.jetbrains.php</depends>
+    <depends>com.intellij.modules.json</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <fileIconProvider implementation="com.github.downace.stormfox.config.MagoConfigIconProvider"/>
         <projectConfigurable
                 parentId="settings.php.quality.tools"
                 id="settings.php.quality.tools.php.mago.formatter"
@@ -26,5 +28,8 @@
                 implementation="com.github.downace.stormfox.format.MagoFormattingService"/>
 
         <notificationGroup id="Mago" displayType="BALLOON"/>
+    </extensions>
+    <extensions defaultExtensionNs="JavaScript">
+        <JsonSchema.ProviderFactory implementation="com.github.downace.stormfox.config.MagoJsonSchemaProviderFactory"/>
     </extensions>
 </idea-plugin>

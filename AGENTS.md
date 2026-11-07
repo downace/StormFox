@@ -7,8 +7,9 @@
   whether PHP files are formatted by mago or by the IDE's built-in formatter. The plugin registers
   no entry of its own in *Actions on Save* — two on-save paths would format the file twice.
   `testPluginDoesNotRegisterItsOwnActionsOnSaveEntry` guards it.
-* **Two extension points only:** `formattingService` and `projectConfigurable`. A third one needs a
-  reason.
+* **Keep extension points focused.** `formattingService` and `projectConfigurable` handle formatting
+  and settings; `fileIconProvider` and `JavaScript.JsonSchema.ProviderFactory` support Mago configuration files.
+  The plugin still registers no Actions on Save entry.
 * **The plugin never writes to a file.** The editor buffer is piped through
   `mago format --stdin-input` and the result comes back into the document.
 * **Whole files only.** The formatting service does not offer `FORMAT_FRAGMENTS`, so selections and

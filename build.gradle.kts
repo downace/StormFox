@@ -51,6 +51,7 @@ dependencies {
             )
         }
         bundledPlugin("com.jetbrains.php")
+        bundledPlugin("com.intellij.modules.json")
         testFramework(TestFrameworkType.Platform)
         testBundledPlugin("com.jetbrains.php")
     }
