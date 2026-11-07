@@ -1,0 +1,30 @@
+<idea-plugin url="https://github.com/downace/StormFox">
+    <id>com.github.downace.stormfox</id>
+    <name>StormFox</name>
+    <vendor>Sergey Malchits</vendor>
+
+    <description><![CDATA[
+    <p>Formats PHP files with <a href="https://mago.carthage.software/">Mago</a>, a PHP toolchain written in Rust.</p>
+    ]]></description>
+
+    <change-notes><![CDATA[
+    <p>First release: PHP files are formatted with <a href="https://mago.carthage.software/">Mago</a>.</p>
+    ]]></change-notes>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.jetbrains.php</depends>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <projectConfigurable
+                parentId="settings.php.quality.tools"
+                id="settings.php.quality.tools.php.mago.formatter"
+                displayName="Mago"
+                instance="com.github.downace.stormfox.settings.MagoConfigurable"/>
+
+        <formattingService
+                id="MagoFormattingService"
+                implementation="com.github.downace.stormfox.format.MagoFormattingService"/>
+
+        <notificationGroup id="Mago" displayType="BALLOON"/>
+    </extensions>
+</idea-plugin>
