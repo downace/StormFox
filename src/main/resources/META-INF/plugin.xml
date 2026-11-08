@@ -4,11 +4,16 @@
     <vendor>Sergey Malchits</vendor>
 
     <description><![CDATA[
-    <p>Formats PHP files with <a href="https://mago.carthage.software/">Mago</a>, a PHP toolchain written in Rust.</p>
+    <p><a href="https://mago.carthage.software/">Mago</a> integration for PHP: format code and inspect stylistic issues, inconsistencies, and code smells using your project's Mago configuration.</p>
+    <h3>Currently implemented features:</h3>
+    <ul>
+        <li><b>Formatting:</b> format PHP files with Reformat code or automatically on save.</li>
+        <li><b>Linting:</b> see Mago Lint findings directly in the editor and the Problems window.</li>
+    </ul>
     ]]></description>
 
     <change-notes><![CDATA[
-    <p>First release: PHP files are formatted with <a href="https://mago.carthage.software/">Mago</a>.</p>
+    <p>First release: <a href="https://mago.carthage.software/">Mago</a> integration with PHP formatting and lint inspections.</p>
     ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
@@ -16,6 +21,10 @@
     <depends>com.intellij.modules.json</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <localInspection language="PHP" shortName="MagoLint" displayName="Mago validation"
+                         groupPath="PHP" groupName="Quality tools" enabledByDefault="false" level="WARNING"
+                         implementationClass="com.github.downace.stormfox.lint.MagoLintInspection"/>
+        <externalAnnotator language="PHP" implementationClass="com.github.downace.stormfox.lint.MagoLintAnnotator"/>
         <fileIconProvider implementation="com.github.downace.stormfox.config.MagoConfigIconProvider"/>
         <projectConfigurable
                 parentId="settings.php.quality.tools"

@@ -2,16 +2,17 @@
 
 ## Decisions
 
-* **Two switches, one job each.** The native **Reformat code** in *Settings → Tools → Actions on
+* **Two switches, one job each.** The native **Reformat code** in *Settings | Tools | Actions on
   Save* decides whether a file is formatted on save; the plugin's **Use Mago formatter** decides
   whether PHP files are formatted by mago or by the IDE's built-in formatter. The plugin registers
   no entry of its own in *Actions on Save* — two on-save paths would format the file twice.
   `testPluginDoesNotRegisterItsOwnActionsOnSaveEntry` guards it.
 * **Keep extension points focused.** `formattingService` and `projectConfigurable` handle formatting
-  and settings; `fileIconProvider` and `JavaScript.JsonSchema.ProviderFactory` support Mago configuration files.
+  and settings; `localInspection` and `externalAnnotator` handle linting;
+  `fileIconProvider` and `JavaScript.JsonSchema.ProviderFactory` support Mago configuration files.
   The plugin still registers no Actions on Save entry.
-* **The plugin never writes to a file.** The editor buffer is piped through
-  `mago format --stdin-input` and the result comes back into the document.
+* **The plugin never writes to a file.** Formatting and linting read the editor buffer through
+  stdin. Formatting returns the result to the document; linting returns diagnostics.
 * **Whole files only.** The formatting service does not offer `FORMAT_FRAGMENTS`, so selections and
   "changed lines only" ranges fall back to the IDE's own formatter.
 * **Success is silent.** A successful format says nothing. Only errors surface, as a balloon with an
@@ -66,7 +67,7 @@ What to check in the IDE:
 
 On Windows, use `./gradlew.bat` instead of `./gradlew`.
 
-Diagnostics: the IDE log (*Help → Show Log in Explorer*), lines prefixed `Mago: `.
+Diagnostics: the IDE log (*Help | Show Log in Explorer*), lines prefixed `Mago: `.
 
 ## Releases
 

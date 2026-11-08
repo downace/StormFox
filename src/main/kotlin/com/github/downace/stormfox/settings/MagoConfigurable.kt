@@ -4,11 +4,16 @@ import com.intellij.icons.AllIcons
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.ex.ConfigurableExtensionPointUtil
+import com.intellij.openapi.project.Project
+import com.intellij.profile.codeInspection.ui.ErrorsConfigurable
+import com.intellij.profile.codeInspection.ui.ErrorsConfigurableProvider
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
+import com.jetbrains.php.lang.inspections.PhpInspectionsUtil
 import com.intellij.util.ui.InlineIconButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -34,6 +39,7 @@ private const val MAX_STATUS_TEXT_LENGTH = 120
 private const val MAX_STATUS_WIDTH = 400
 private const val ELLIPSIS = "…"
 private const val SECTION_TITLE = "Formatter"
+private const val LINTER_SECTION_TITLE = "Linter"
 private const val FORMATTER_HINT = "Mago replaces the IDE code style settings for PHP files."
 private const val FORMATTER_ON_SAVE_HINT =
     "Formatting on save is controlled by the IDE: turn on Reformat code in Settings | Tools | Actions on Save."
@@ -42,7 +48,7 @@ private val SECONDARY_TEXT_COLOR: Color = UIUtil.getContextHelpForeground()
 private val ERROR_TEXT_COLOR: Color = JBColor.namedColor("Label.errorForeground", UIUtil.getErrorForeground())
 private val SEPARATOR_COLOR: Color = JBColor.namedColor("Group.separatorColor", JBColor.GRAY)
 
-class MagoConfigurable : Configurable {
+class MagoConfigurable(private val project: Project) : Configurable {
 
     private val enabledCheckBox = JBCheckBox("Use Mago formatter")
 
@@ -109,6 +115,27 @@ class MagoConfigurable : Configurable {
         )
     }
 
+    private val linterBlock: JComponent = JPanel(GridBagLayout()).apply {
+        add(
+            sectionRule(LINTER_SECTION_TITLE),
+            cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, JBUI.scale(SECTION_GAP), 0)),
+        )
+        add(
+            PhpInspectionsUtil.createPanelWithSettingsLink(
+                "Mago inspection",
+                ErrorsConfigurable::class.java,
+                { targetProject ->
+                    ConfigurableExtensionPointUtil.createProjectConfigurableForProvider(
+                        targetProject,
+                        ErrorsConfigurableProvider::class.java,
+                    ) as ErrorsConfigurable
+                },
+                { it.selectInspectionTool("MagoLint") },
+            ),
+            cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL),
+        )
+    }
+
     /**
      * The content is put into a BorderLayout.NORTH: a GridBagLayout would share the extra height
      * between its rows and the page would end up vertically centred in the dialog.
@@ -118,6 +145,7 @@ class MagoConfigurable : Configurable {
             JPanel(GridBagLayout()).apply {
                 add(generalBlock, cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
                 add(formatterBlock, cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
+                add(linterBlock, cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
             },
             BorderLayout.NORTH,
         )
