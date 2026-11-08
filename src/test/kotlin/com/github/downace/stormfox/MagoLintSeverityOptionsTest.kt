@@ -15,6 +15,7 @@ import javax.swing.JComboBox
 import javax.swing.JCheckBox
 import java.awt.Container
 import javax.swing.JPanel
+import javax.swing.JList
 
 class MagoLintSeverityOptionsTest : BasePlatformTestCase() {
     fun testDisabledOverrideKeepsProfileSeverityAndDefaultsArePersistable() {
@@ -46,13 +47,31 @@ class MagoLintSeverityOptionsTest : BasePlatformTestCase() {
         val checkbox = controls.filterIsInstance<JCheckBox>().single()
         val combos = controls.filterIsInstance<JComboBox<*>>()
         assertEquals(4, combos.size)
+        assertEquals(listOf("ERROR", "WARNING", "WEAK WARNING", "TYPO"),
+            combos.map { (it.selectedItem as HighlightSeverity).name })
         assertTrue(combos.none { it.isEnabled })
 
         checkbox.doClick()
         assertTrue(combos.all { it.isEnabled })
-        val warningCombo = combos[2]
+        val warningCombo = combos[1]
         warningCombo.selectedItem = HighlightSeverity.INFORMATION
         assertEquals(HighlightSeverity.INFORMATION.name, inspection.warningSeverity)
+    }
+
+    fun testSeverityChoicesCapitalizeDisplayNames() {
+        val panel = MagoLintInspection().createOptionsPanel()
+        val combos = descendants(panel).filterIsInstance<JComboBox<*>>()
+        val combo = combos.first()
+        val renderer = combo.renderer as javax.swing.ListCellRenderer<Any>
+        val rendered = renderer.getListCellRendererComponent(
+            JList<Any>(), HighlightSeverity.WEAK_WARNING, -1, false, false,
+        ) as javax.swing.JLabel
+        assertEquals(HighlightSeverity.WEAK_WARNING.displayName.replaceFirstChar { it.titlecase() }, rendered.text)
+        val typo = renderer.getListCellRendererComponent(
+            JList<Any>(), (0 until combo.itemCount).map(combo::getItemAt)
+                .filterIsInstance<HighlightSeverity>().first { it.name == "TYPO" }, -1, false, false,
+        ) as javax.swing.JLabel
+        assertEquals("Typo", typo.text)
     }
 
     @Suppress("DEPRECATION")

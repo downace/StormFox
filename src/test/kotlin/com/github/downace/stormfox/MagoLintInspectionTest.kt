@@ -6,6 +6,10 @@ import com.github.downace.stormfox.lint.MagoLintReport
 import com.github.downace.stormfox.lint.MagoLintRunner
 import com.github.downace.stormfox.settings.MagoSettings
 import com.intellij.codeInsight.daemon.HighlightDisplayKey
+import com.intellij.codeInsight.daemon.impl.AnnotationHolderImpl
+import com.intellij.codeInspection.ProblemDescriptorUtil
+import com.intellij.codeInspection.ProblemHighlightType
+import com.intellij.lang.annotation.AnnotationSession
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.lang.annotation.HighlightSeverity
 import com.intellij.openapi.extensions.ExtensionPointName
@@ -18,10 +22,9 @@ import java.lang.reflect.Proxy
 import java.nio.file.Files
 
 class MagoLintInspectionTest : BasePlatformTestCase() {
-    fun testRegisteredDisabledAndWithoutOptions() {
+    fun testRegisteredDisabled() {
         val inspection = MagoLintInspection()
         assertFalse(inspection.isEnabledByDefault)
-        assertNull(inspection.createOptionsPanel())
         assertEquals(listOf("PHP", "Quality tools"), inspection.groupPath.toList())
         assertTrue(ExtensionPointName<com.intellij.codeInspection.LocalInspectionEP>("com.intellij.localInspection").extensionList.any {
             it.implementationClass == MagoLintInspection::class.java.name
@@ -103,6 +106,79 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         assertFalse(args.contains("--fix"))
         val leadingDash = MagoLintRunner.arguments("mago", "", File(root, "-Sample.php").absolutePath, root)
         assertEquals(listOf("--", "-Sample.php"), leadingDash.takeLast(2))
+    }
+
+    fun testRealAnnotationsRespectProfileInstanceMappingsAndBatchConversion() {
+        val text = "<?php echo 1;"
+        myFixture.configureByText("Sample.php", text)
+        myFixture.enableInspections(MagoLintInspection())
+        val profile = InspectionProjectProfileManager.getInstance(project).currentProfile
+        val inspection = profile.getInspectionTool(MagoLintInspection.SHORT_NAME, myFixture.file)!!.tool as MagoLintInspection
+        profile.setErrorLevel(HighlightDisplayKey.find(MagoLintInspection.SHORT_NAME)!!,
+            com.intellij.codeHighlighting.HighlightDisplayLevel.ERROR, project)
+        inspection.noteSeverity = HighlightSeverity.INFORMATION.name
+        inspection.helpSeverity = HighlightSeverity.WEAK_WARNING.name
+        inspection.warningSeverity = HighlightSeverity.WARNING.name
+        inspection.errorSeverity = HighlightSeverity.ERROR.name
+        val range = TextRange(6, 10)
+        val report = MagoLintAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(
+            listOf("Note", "Help", "Warning", "Error").map {
+                MagoLintReport.Diagnostic(range, it, null, it)
+            },
+        ))
+        fun annotations(): AnnotationHolderImpl {
+            val holder = AnnotationHolderImpl(AnnotationSession(myFixture.file), true)
+            holder.runAnnotatorWithContext(myFixture.file) { _, target ->
+                MagoLintAnnotator().apply(myFixture.file, report, target)
+            }
+            holder.assertAllAnnotationsCreated()
+            return holder
+        }
+        assertEquals(List(4) { HighlightSeverity.ERROR }, annotations().map { it.severity })
+        inspection.overrideSeverityLevels = true
+        val mapped = annotations()
+        assertEquals(listOf(HighlightSeverity.INFORMATION, HighlightSeverity.WEAK_WARNING,
+            HighlightSeverity.WARNING, HighlightSeverity.ERROR), mapped.map { it.severity })
+        assertTrue(mapped.all { it.startOffset == range.startOffset && it.endOffset == range.endOffset })
+        assertEquals(listOf(ProblemHighlightType.WEAK_WARNING, ProblemHighlightType.WARNING, ProblemHighlightType.ERROR),
+            ProblemDescriptorUtil.convertToProblemDescriptors(mapped, myFixture.file).map { it.highlightType })
+        inspection.errorSeverity = HighlightSeverity.WEAK_WARNING.name
+        val failureHolder = AnnotationHolderImpl(AnnotationSession(myFixture.file), true)
+        failureHolder.runAnnotatorWithContext(myFixture.file) { _, target ->
+            MagoLintAnnotator().apply(myFixture.file,
+                MagoLintAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago")), target)
+        }
+        assertEquals(HighlightSeverity.ERROR, failureHolder.single().severity)
+        assertTrue(failureHolder.single().isFileLevelAnnotation)
+        val custom = HighlightSeverity("StormFox runtime severity", 250)
+        val registrar = com.intellij.codeInsight.daemon.impl.SeverityRegistrar.getSeverityRegistrar(project)
+        registrar.registerSeverity(com.intellij.codeInsight.daemon.impl.SeverityRegistrar.SeverityBasedTextAttributes(
+            com.intellij.openapi.editor.markup.TextAttributes(),
+            com.intellij.codeInsight.daemon.impl.HighlightInfoType.HighlightInfoTypeImpl(custom,
+                com.intellij.openapi.editor.colors.CodeInsightColors.WARNINGS_ATTRIBUTES)), null)
+        try {
+            inspection.warningSeverity = custom.name
+            val customAnnotations = annotations()
+            assertEquals(custom, customAnnotations[2].severity)
+            assertEquals(ProblemHighlightType.INFORMATION,
+                ProblemDescriptorUtil.convertToProblemDescriptors(customAnnotations, myFixture.file)[1].highlightType)
+        } finally {
+            registrar.unregisterSeverity(custom)
+        }
+        inspection.overrideSeverityLevels = false
+        assertEquals(List(4) { HighlightSeverity.ERROR }, annotations().map { it.severity })
+    }
+
+    fun testPlatformBatchConverterPreservesBuiltinAndCustomSeverityBehavior() {
+        myFixture.configureByText("Sample.php", "<?php echo 1;")
+        val severities = listOf(HighlightSeverity.ERROR, HighlightSeverity.WARNING, HighlightSeverity.INFO,
+            HighlightSeverity.WEAK_WARNING, HighlightSeverity("Runtime custom", 250), HighlightSeverity.INFORMATION)
+        val annotations = severities.map {
+            com.intellij.lang.annotation.Annotation(6, 10, it, it.name, null)
+        }
+        val descriptors = ProblemDescriptorUtil.convertToProblemDescriptors(annotations, myFixture.file)
+        assertEquals(listOf(ProblemHighlightType.ERROR, ProblemHighlightType.WARNING, ProblemHighlightType.INFO,
+            ProblemHighlightType.WEAK_WARNING, ProblemHighlightType.INFORMATION), descriptors.map { it.highlightType })
     }
 
     fun testCancellationPropagatesBeforeProcessStarts() {

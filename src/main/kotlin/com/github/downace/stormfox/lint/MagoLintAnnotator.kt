@@ -24,7 +24,7 @@ class MagoLintAnnotator : ExternalAnnotator<MagoLintAnnotator.Snapshot, MagoLint
     override fun getPairedBatchInspectionShortName(): String = MagoLintInspection.SHORT_NAME
 
     override fun collectInformation(file: PsiFile): Snapshot? {
-        if (severity(file) == null) return null
+        if (inspection(file) == null) return null
         val virtualFile = file.virtualFile ?: return null
         if (!virtualFile.isInLocalFileSystem || file.language.id != "PHP") return null
         val settings = MagoSettings.getInstance().state
@@ -41,22 +41,23 @@ class MagoLintAnnotator : ExternalAnnotator<MagoLintAnnotator.Snapshot, MagoLint
     override fun apply(file: PsiFile, annotationResult: Report, holder: AnnotationHolder) {
         val currentText = PsiDocumentManager.getInstance(file.project).getDocument(file)?.text ?: file.text
         if (!isCurrent(annotationResult.snapshot, currentText)) return
-        val severity = severity(file) ?: return
-        fun annotation(message: String) = holder.newAnnotation(severity, "Mago Linter: $message")
+        val (inspection, severity) = inspection(file) ?: return
+        fun annotation(message: String, level: HighlightSeverity = severity) = holder.newAnnotation(level, "Mago Linter: $message")
         when (val result = annotationResult.result) {
             is MagoLintRunner.Result.Failure -> annotation(result.message).fileLevel().create()
             is MagoLintRunner.Result.Success -> result.diagnostics.forEach {
-                annotation(it.code?.let { code -> "${it.message} [$code]" } ?: it.message)
+                annotation(it.code?.let { code -> "${it.message} [$code]" } ?: it.message,
+                    inspection.severityFor(it.level, severity, file.project))
                     .range(it.range).create()
             }
         }
     }
 
-    private fun severity(file: PsiFile): HighlightSeverity? {
+    private fun inspection(file: PsiFile): Pair<MagoLintInspection, HighlightSeverity>? {
         val profile = InspectionProjectProfileManager.getInstance(file.project).currentProfile
-        profile.getInspectionTool(MagoLintInspection.SHORT_NAME, file) ?: return null
+        val inspection = profile.getInspectionTool(MagoLintInspection.SHORT_NAME, file)?.tool as? MagoLintInspection ?: return null
         val key = HighlightDisplayKey.find(MagoLintInspection.SHORT_NAME) ?: return null
-        return if (profile.isToolEnabled(key, file)) profile.getErrorLevel(key, file).severity else null
+        return if (profile.isToolEnabled(key, file)) inspection to profile.getErrorLevel(key, file).severity else null
     }
 
     companion object {
