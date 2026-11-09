@@ -51,9 +51,13 @@ class MagoLintAnnotator : ExternalAnnotator<MagoLintAnnotator.Snapshot, MagoLint
                     it.primaryMessage?.takeIf { detail -> detail.isNotBlank() && detail.trim() != it.message.trim() }
                         ?.let(::add)
                 }.joinToString("\n") + (it.code?.let { code -> " [$code]" } ?: "")
-                annotation(plainMessage,
+                val builder = annotation(plainMessage,
                     inspection.severityFor(it.level, severity, file.project))
-                    .range(it.range).tooltip(MagoLintTooltip.compact(it)).create()
+                    .range(it.range).tooltip(MagoLintTooltip.compact(it))
+                if (it.relatedLocations.any { location -> location.filePath != null && location.range != null }) {
+                    builder.withFix(MagoShowRelatedLocationsAction(it.relatedLocations, it.snapshotHash, file.virtualFile))
+                }
+                builder.create()
             }
         }
     }

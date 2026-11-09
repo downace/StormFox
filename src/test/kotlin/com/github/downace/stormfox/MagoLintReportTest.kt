@@ -108,6 +108,25 @@ class MagoLintReportTest {
         results.forEach { assertEquals(expected, it.relatedLocations) }
     }
 
+    @Test fun validatesSameFileSecondaryRangesAgainstTheCurrentUtf8Snapshot() {
+        val secondary = """{"kind":"Secondary","message":"Here","span":{"file_id":{"name":"./source.php"},"start":{"offset":2},"end":{"offset":6}}}"""
+        val value = com.google.gson.JsonParser.parseString(issue(0, 2)).asJsonObject
+        value.getAsJsonArray("annotations").add(com.google.gson.JsonParser.parseString(secondary))
+        assertEquals(TextRange(1, 3), parse(value.toString(), "Я😀x").single().relatedLocations.single().range)
+        val foreign = secondary.replace("./source.php", "other.php")
+        value.getAsJsonArray("annotations").set(1, com.google.gson.JsonParser.parseString(foreign))
+        assertNull(parse(value.toString(), "Я😀x").single().relatedLocations.single().range)
+    }
+
+    @Test fun rejectsInvalidSecondaryUtf8Ranges() {
+        for ((start, end) in listOf(1 to 2, 2 to 3, 6 to 2, 0 to 99)) {
+            val secondary = """{"kind":"Secondary","message":"Here","span":{"file_id":{"name":"source.php"},"start":{"offset":$start},"end":{"offset":$end}}}"""
+            val value = com.google.gson.JsonParser.parseString(issue(0, 2)).asJsonObject
+            value.getAsJsonArray("annotations").add(com.google.gson.JsonParser.parseString(secondary))
+            assertNull(parse(value.toString(), "Я😀x").single().relatedLocations.single().range)
+        }
+    }
+
     @Test fun rejectsMalformedOptionalContext() {
         for (fields in listOf("\"notes\":\"note\"", "\"notes\":[null]", "\"notes\":[42]", "\"help\":[]")) {
             assertThrows(Exception::class.java) {

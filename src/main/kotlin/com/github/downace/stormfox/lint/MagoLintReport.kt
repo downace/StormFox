@@ -20,9 +20,16 @@ internal object MagoLintReport {
         val notes: List<String> = emptyList(),
         val help: String? = null,
         val relatedLocations: List<RelatedLocation> = emptyList(),
+        val snapshotHash: String = "",
     )
 
-    data class RelatedLocation(val message: String?, val path: String, val line: Int? = null)
+    data class RelatedLocation(
+        val message: String?,
+        val path: String,
+        val line: Int? = null,
+        val range: TextRange? = null,
+        val filePath: String? = null,
+    )
 
     fun parse(json: String, text: String, logicalPath: String, workingDirectory: File?): List<Diagnostic> {
         JsonReader(StringReader(json)).use {
@@ -35,6 +42,7 @@ internal object MagoLintReport {
         require(issues.isJsonArray) { "Expected lint issues array" }
         val offsets = byteOffsets(text)
         val expectedPath = normalizePath(logicalPath, workingDirectory)
+        val snapshotHash = MagoRelatedNavigation.snapshotHash(text)
         val diagnostics = linkedSetOf<Diagnostic>()
         for (element in issues.asJsonArray) {
             require(element.isJsonObject) { "Expected lint issue object" }
@@ -65,7 +73,17 @@ internal object MagoLintReport {
                     require(it.isJsonPrimitive && it.asJsonPrimitive.isNumber) { "Expected numeric line" }
                     it.asString.toIntOrNull()
                 }
-                RelatedLocation(annotation.optionalString("message")?.takeIf { it.isNotBlank() }, path, line)
+                val sameSnapshot = normalizePath(path, workingDirectory) == expectedPath
+                val range = if (sameSnapshot) {
+                    val secondaryStart = offset(span.asJsonObject.get("start"))
+                    val secondaryEnd = offset(span.asJsonObject.get("end"))
+                    if (secondaryStart != null && secondaryEnd != null && secondaryStart in offsets.indices &&
+                        secondaryEnd in offsets.indices && secondaryEnd >= secondaryStart &&
+                        offsets[secondaryStart] >= 0 && offsets[secondaryEnd] >= 0
+                    ) TextRange(offsets[secondaryStart], offsets[secondaryEnd]) else null
+                } else null
+                RelatedLocation(annotation.optionalString("message")?.takeIf { it.isNotBlank() }, path, line, range,
+                    logicalPath.takeIf { sameSnapshot && range != null })
             }
             for (annotationElement in annotations.asJsonArray) {
                 require(annotationElement.isJsonObject) { "Expected annotation object" }
@@ -81,7 +99,7 @@ internal object MagoLintReport {
                 if (offsets[start] < 0 || offsets[end] < 0) continue
                 val detail = annotation.optionalString("message")?.takeIf { it.isNotBlank() }
                 diagnostics.add(Diagnostic(TextRange(offsets[start], offsets[end]), message, code, level,
-                    detail, notes, help, relatedLocations))
+                    detail, notes, help, relatedLocations, snapshotHash))
             }
         }
         return diagnostics.toList()

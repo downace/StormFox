@@ -8,16 +8,11 @@ internal object MagoLintTooltip {
     private const val DOCUMENTATION = "https://mago.carthage.software/latest/en/tools/linter/rules/#"
 
     fun compact(diagnostic: MagoLintReport.Diagnostic): String {
-        val message = buildList {
-            add(diagnostic.message)
-            diagnostic.primaryMessage?.takeIf { it.isNotBlank() && it.trim() != diagnostic.message.trim() }
-                ?.let(::add)
-        }.joinToString("<br>") { renderText(it) }
-        val code = diagnostic.code?.takeIf { it.isNotBlank() }
-        val label = code?.let { renderText(it) }.orEmpty()
+        val message = diagnostic.primaryMessage?.takeIf { it.isNotBlank() } ?: diagnostic.message
+        val code = diagnostic.code?.takeIf { it.isNotBlank() }?.let { " <code>${renderText(it)}</code>" }.orEmpty()
         val extra = expanded(diagnostic)
         val details = if (extra == null) "" else " &nbsp; ${detailsLink(extra)}"
-        return "<html>$message<br>$label${if (label.isNotEmpty()) details else details.trimStart()}</html>"
+        return "<html><b>Mago Linter</b>: ${renderText(message)}$code$details</html>"
     }
 
     fun expanded(diagnostic: MagoLintReport.Diagnostic): String? = buildString {
@@ -26,19 +21,20 @@ internal object MagoLintTooltip {
             append(content)
             hasContent = true
         }
-        diagnostic.help?.takeIf { it.isNotBlank() }?.let {
-            section("<p><b>Help</b><br>${renderText(it)}</p>")
+        diagnostic.message.takeIf {
+            it.isNotBlank() && diagnostic.primaryMessage?.isNotBlank() == true &&
+                it.trim() != diagnostic.primaryMessage.trim()
+        }?.let {
+            section("<p>${renderText(it)}</p>")
         }
-        diagnostic.notes.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }?.let { notes ->
-            section("<p><b>Notes</b><br>${notes.joinToString("<br>") { renderText(it) }}</p>")
+        val help = diagnostic.help?.takeIf { it.isNotBlank() }?.let(::renderText)
+        val notes = diagnostic.notes.filter { it.isNotBlank() }.takeIf { it.isNotEmpty() }
+            ?.joinToString("<br>") { renderText(it) }
+        help?.let {
+            section("<p><icon src=\"com.intellij.icons.AllIcons.Actions.IntentionBulb\" alt=\"Help\"/>&nbsp;&nbsp;$it</p>")
         }
-        diagnostic.relatedLocations.takeIf { it.isNotEmpty() }?.let { locations ->
-            section("<p><b>Related locations</b><br>${locations.joinToString("<br>") { location ->
-                buildString {
-                    location.message?.takeIf { it.isNotBlank() }?.let { append(renderText(it)).append(" — ") }
-                    append(renderText(location.path))
-                }
-            }}</p>")
+        notes?.let {
+            section("<p><icon src=\"com.intellij.icons.AllIcons.General.Information\" alt=\"Notes\"/>&nbsp;&nbsp;$it</p>")
         }
         diagnostic.code?.takeIf { it.isNotBlank() }?.let {
             section("<p><a href=\"$DOCUMENTATION${encodeFragment(it)}\">Rule documentation</a></p>")
