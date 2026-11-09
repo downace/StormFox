@@ -16,7 +16,8 @@ class MagoLintReportTest {
     @Test fun convertsUtf8ToUtf16() {
         val result = parse(issue(2, 6), "Я😀x").single()
         assertEquals(TextRange(1, 3), result.range)
-        assertEquals("Issue\nDetail", result.message)
+        assertEquals("Issue", result.message)
+        assertEquals("Detail", result.primaryMessage)
         assertEquals("example", result.code)
         assertEquals("Error", result.level)
     }
@@ -46,6 +47,7 @@ class MagoLintReportTest {
     @Test fun deduplicatesIssuesAndMessages() {
         assertEquals(1, parse("${issue()},${issue()}").size)
         assertEquals("Issue", parse(issue(detail = "Issue")).single().message)
+        assertEquals("Issue", parse(issue(detail = "Issue")).single().primaryMessage)
     }
 
     @Test fun acceptsRelativeNameWithDiskPathPresent() {
@@ -61,6 +63,57 @@ class MagoLintReportTest {
 
     @Test fun acceptsCleanReport() {
         assertTrue(parse("").isEmpty())
+    }
+
+    @Test fun preservesOptionalIssueContextAndPlainHtml() {
+        val value = com.google.gson.JsonParser.parseString(issue(detail = "<b>detail</b>")).asJsonObject
+        value.addProperty("message", "<script>alert(1)</script>")
+        value.add("notes", com.google.gson.JsonParser.parseString("""["", "  ", "<img src=x>", "Another note"]"""))
+        value.addProperty("help", "<a href='bad'>help</a>")
+        val result = parse(value.toString()).single()
+        assertEquals("<script>alert(1)</script>", result.message)
+        assertEquals("<b>detail</b>", result.primaryMessage)
+        assertEquals(listOf("<img src=x>", "Another note"), result.notes)
+        assertEquals("<a href='bad'>help</a>", result.help)
+    }
+
+    @Test fun acceptsMissingNullAndBlankOptionalContext() {
+        for (fields in listOf("", ", \"notes\":null, \"help\":null", ", \"notes\":[\"\", \"  \"], \"help\":\"  \"")) {
+            val result = parse("""{"level":"Error","message":"Issue"$fields,"annotations":[{"kind":"Primary","message":null,"span":{"file_id":{"name":"source.php"},"start":{"offset":0},"end":{"offset":1}}}]}""").single()
+            assertNull(result.primaryMessage)
+            assertTrue(result.notes.isEmpty())
+            assertNull(result.help)
+            assertTrue(result.relatedLocations.isEmpty())
+        }
+        assertNull(parse(issue(detail = "  ")).single().primaryMessage)
+    }
+
+    @Test fun attachesSecondaryLocationsToEveryPrimaryWithoutHighlights() {
+        val value = com.google.gson.JsonParser.parseString(issue()).asJsonObject
+        val annotations = value.getAsJsonArray("annotations")
+        annotations.add(com.google.gson.JsonParser.parseString(issue(1, 2)).asJsonObject.getAsJsonArray("annotations")[0])
+        for (secondary in listOf(
+            """{"kind":"Secondary","message":"Elsewhere","span":{"file_id":{"name":"other.php","path":"ignored.php"},"start":{"line":7}}}""",
+            """{"kind":"Secondary","message":" ","span":{"file_id":{"path":"fallback.php"}}}""",
+            """{"kind":"Secondary","message":"No span"}""",
+            """{"kind":"Secondary","span":null}""",
+            """{"kind":"Secondary","span":{}}""",
+        )) annotations.add(com.google.gson.JsonParser.parseString(secondary))
+        val results = parse(value.toString())
+        assertEquals(listOf(TextRange(0, 1), TextRange(1, 2)), results.map { it.range })
+        val expected = listOf(
+            MagoLintReport.RelatedLocation("Elsewhere", "other.php", 7),
+            MagoLintReport.RelatedLocation(null, "fallback.php"),
+        )
+        results.forEach { assertEquals(expected, it.relatedLocations) }
+    }
+
+    @Test fun rejectsMalformedOptionalContext() {
+        for (fields in listOf("\"notes\":\"note\"", "\"notes\":[null]", "\"notes\":[42]", "\"help\":[]")) {
+            assertThrows(Exception::class.java) {
+                parse("""{"level":"Error","message":"Issue",$fields,"annotations":[]}""")
+            }
+        }
     }
 
     @Test fun rejectsMalformedReports() {

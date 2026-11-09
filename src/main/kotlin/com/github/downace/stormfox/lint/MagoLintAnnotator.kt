@@ -46,9 +46,14 @@ class MagoLintAnnotator : ExternalAnnotator<MagoLintAnnotator.Snapshot, MagoLint
         when (val result = annotationResult.result) {
             is MagoLintRunner.Result.Failure -> annotation(result.message).fileLevel().create()
             is MagoLintRunner.Result.Success -> result.diagnostics.forEach {
-                annotation(it.code?.let { code -> "${it.message} [$code]" } ?: it.message,
+                val plainMessage = buildList {
+                    add(it.message)
+                    it.primaryMessage?.takeIf { detail -> detail.isNotBlank() && detail.trim() != it.message.trim() }
+                        ?.let(::add)
+                }.joinToString("\n") + (it.code?.let { code -> " [$code]" } ?: "")
+                annotation(plainMessage,
                     inspection.severityFor(it.level, severity, file.project))
-                    .range(it.range).create()
+                    .range(it.range).tooltip(MagoLintTooltip.compact(it)).create()
             }
         }
     }

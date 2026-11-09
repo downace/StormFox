@@ -32,6 +32,10 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         assertTrue(ExtensionPointName<com.intellij.lang.LanguageExtensionPoint<Any>>("com.intellij.externalAnnotator").extensionList.any {
             it.implementationClass == MagoLintAnnotator::class.java.name
         })
+        assertTrue(com.intellij.codeInsight.hint.TooltipLinkHandlerEP.EP_NAME.extensionList.any {
+            it.prefix == com.github.downace.stormfox.lint.MagoLintTooltip.PREFIX &&
+                it.handlerClassName == com.github.downace.stormfox.lint.MagoLintTooltipLinkHandler::class.java.name
+        })
     }
 
     fun testCollectRequiresInspectionButNotFormatter() {

@@ -33,6 +33,7 @@
     <depends>com.intellij.modules.json</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <codeInsight.linkHandler prefix="stormfox-mago-details:" handlerClass="com.github.downace.stormfox.lint.MagoLintTooltipLinkHandler"/>
         <localInspection language="PHP" shortName="MagoLint" displayName="Mago validation"
                          groupPath="PHP" groupName="Quality tools" enabledByDefault="false" level="WARNING"
                          implementationClass="com.github.downace.stormfox.lint.MagoLintInspection"/>
