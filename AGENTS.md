@@ -40,8 +40,7 @@
   thousands of paths; a raster keeps the file small, and the higher resolution keeps it sharp on
   HiDPI screens.
 * **The marketplace Description comes from `plugin.xml`** (`<description>`, HTML — the IDE renders it
-  as HTML, and the marketplace renders it too). *Getting Started* has no plugin.xml source: its text
-  lives in `docs/marketplace/getting-started.html` and is pasted into the website by hand.
+  as HTML, and the marketplace renders it too).
 
 ## Working on it
 

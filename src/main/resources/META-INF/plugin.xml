@@ -5,10 +5,22 @@
 
     <description><![CDATA[
     <p><a href="https://mago.carthage.software/">Mago</a> integration for PHP: format code and inspect stylistic issues, inconsistencies, and code smells using your project's Mago configuration.</p>
-    <h3>Currently implemented features:</h3>
+    <h3>Features</h3>
     <ul>
-        <li><b>Formatting:</b> format PHP files with Reformat code or automatically on save.</li>
-        <li><b>Linting:</b> see Mago Lint findings directly in the editor and the Problems window.</li>
+        <li><b><a href="https://mago.carthage.software/latest/en/tools/formatter/overview/">Formater</a>:</b> format PHP files with Reformat code or automatically on save.</li>
+        <li><b><a href="https://mago.carthage.software/latest/en/tools/linter/overview/">Linter</a>:</b> see Mago Lint findings directly in the editor and the Problems window.</li>
+        <li><b><a href="https://mago.carthage.software/latest/en/tools/analyzer/overview/">Analyzer</a>:</b> 🚧 Work in progress 🚧</li>
+        <li><b><a href="https://mago.carthage.software/latest/en/tools/guard/overview/">Guard</a>:</b> 🚧 Work in progress 🚧</li>
+    </ul>
+    <h3>Getting started</h3>
+    <ol>
+        <li><a href="https://mago.carthage.software/1.59.0/en/guide/installation/">Install Mago</a> and make sure it runs on your machine.</li>
+        <li>Open <b>Settings | PHP | Quality Tools | Mago</b> and set <b>Mago executable</b> to the path of the binary.</li>
+    </ol>
+    <ul>
+        <li><b>Formatting:</b> enable <b>Use Mago formatter</b>, then use <b>Reformat code</b> (<code>Ctrl+Alt+L</code>).</li>
+        <li><b>Formatting on save:</b> also enable <b>Reformat code</b> in <b>Settings | Tools | Actions on Save</b>.</li>
+        <li><b>Linting:</b> in <b>Settings | Editor | Inspections</b> enable <b>PHP | Quality tools | Mago validation</b>.</li>
     </ul>
     ]]></description>
 
