@@ -18,10 +18,6 @@ class MagoSettings : PersistentStateComponent<MagoSettings.State> {
         @JvmField
         var configPath: String = ""
 
-        /**
-         * Off means the built-in PHP formatter handles Reformat Code and nothing is formatted on save.
-         * It is on by default so that installing the plugin does not silently change the behaviour.
-         */
         @JvmField
         var enabled: Boolean = true
     }
