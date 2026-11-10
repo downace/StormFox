@@ -3,6 +3,9 @@ package com.github.downace.stormfox.format
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.util.concurrency.AppExecutorUtil
+import java.util.concurrent.CancellationException
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.util.SystemInfo
 import java.io.File
@@ -15,6 +18,36 @@ internal object MagoRunner {
 
     const val TIMEOUT_MS = 30_000
 
+    internal class Cancellation {
+        private var cancelled = false
+        private var process: Process? = null
+
+        @Synchronized
+        fun cancel() {
+            cancelled = true
+            process?.destroyForcibly()
+        }
+
+        @Synchronized
+        fun attach(process: Process) {
+            this.process = process
+            if (cancelled) {
+                process.destroyForcibly()
+                throw ProcessCanceledException()
+            }
+        }
+
+        @Synchronized
+        fun checkCanceled() {
+            if (cancelled) throw ProcessCanceledException()
+        }
+
+        @Synchronized
+        fun deliver(action: () -> Unit) {
+            if (!cancelled) action()
+        }
+    }
+
     sealed interface Result {
         data class Success(val text: String) : Result
         data class Failure(val message: String) : Result
@@ -25,7 +58,15 @@ internal object MagoRunner {
      *
      * @param configPath value for mago's global `--config` flag, empty to let mago discover the configuration itself
      */
-    fun format(binary: String, workingDirectory: File?, configPath: String, logicalPath: String, text: String): Result {
+    fun format(
+        binary: String,
+        workingDirectory: File?,
+        configPath: String,
+        logicalPath: String,
+        text: String,
+        cancellation: Cancellation = Cancellation(),
+    ): Result {
+        cancellation.checkCanceled()
         val commandLine = GeneralCommandLine(buildArguments(binary, configPath, logicalPath))
             .withCharset(StandardCharsets.UTF_8)
 
@@ -40,11 +81,14 @@ internal object MagoRunner {
             return Result.Failure("Cannot start mago: ${e.message}")
         }
 
+        var writer: java.util.concurrent.Future<*>? = null
         return try {
-            writeStdin(handler, text)
+            cancellation.attach(handler.process)
+            writer = AppExecutorUtil.getAppExecutorService().submit { writeStdin(handler, text) }
 
             val started = System.currentTimeMillis()
             val output = handler.runProcess(TIMEOUT_MS, true)
+            cancellation.checkCanceled()
             val duration = System.currentTimeMillis() - started
 
             LOG.info(
@@ -62,11 +106,16 @@ internal object MagoRunner {
                 output.exitCode != 0 -> Result.Failure(errorMessage(output.stderr, output.exitCode))
                 else -> Result.Success(output.stdout)
             }
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             LOG.warn("mago failed", e)
             Result.Failure("mago failed: ${e.message ?: e.toString()}")
         } finally {
             handler.destroyProcess()
+            writer?.cancel(true)
         }
     }
 

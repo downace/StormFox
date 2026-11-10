@@ -63,46 +63,48 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
      * protected nested interface before build 261. A top level class in another package cannot
      * implement it, and the plugin has to compile against builds that still declare it that way.
      */
-    private class MagoFormattingTask(
+    internal class MagoFormattingTask(
         private val request: AsyncFormattingRequest,
         private val binary: String,
         private val configPath: String,
         private val workingDirectory: File?,
         private val logicalPath: String,
         private val originalText: String,
+        private val format: (MagoRunner.Cancellation) -> MagoRunner.Result = { cancellation ->
+            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation)
+        },
     ) : AsyncDocumentFormattingService.FormattingTask {
 
         private val LOG = Logger.getInstance(MagoFormattingTask::class.java)
 
-        @Volatile
-        private var cancelled = false
+        private val cancellation = MagoRunner.Cancellation()
 
         override fun run() {
-            if (cancelled) {
-                return
-            }
-            val result = MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText)
+            cancellation.checkCanceled()
+            val result = format(cancellation)
             LOG.info(
                 "Mago: formatted $logicalPath, result=${result::class.simpleName}, " +
                     "changed=${result is MagoRunner.Result.Success && result.text != originalText}",
             )
-            when (result) {
-                is MagoRunner.Result.Success -> {
-                    if (result.text != originalText) {
-                        request.onTextReady(result.text)
-                    } else {
+            cancellation.deliver {
+                when (result) {
+                    is MagoRunner.Result.Success -> {
+                        if (result.text != originalText) {
+                            request.onTextReady(result.text)
+                        } else {
+                            request.onTextReady(null)
+                        }
+                    }
+                    is MagoRunner.Result.Failure -> {
+                        notifyMagoError(request.context.project, result.message)
                         request.onTextReady(null)
                     }
-                }
-                is MagoRunner.Result.Failure -> {
-                    notifyMagoError(request.context.project, result.message)
-                    request.onTextReady(null)
                 }
             }
         }
 
         override fun cancel(): Boolean {
-            cancelled = true
+            cancellation.cancel()
             return true
         }
     }
