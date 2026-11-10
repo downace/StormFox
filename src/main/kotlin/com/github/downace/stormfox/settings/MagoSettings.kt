@@ -2,12 +2,13 @@ package com.github.downace.stormfox.settings
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
+import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
 
 @Service(Service.Level.APP)
-@State(name = "MagoSettings", storages = [Storage("mago.xml")])
+@State(name = "MagoSettings", storages = [Storage("mago.xml", roamingType = RoamingType.DISABLED)])
 class MagoSettings : PersistentStateComponent<MagoSettings.State> {
 
     class State {
