@@ -21,7 +21,12 @@ internal object MagoLintReport {
         val help: String? = null,
         val relatedLocations: List<RelatedLocation> = emptyList(),
         val snapshotHash: String = "",
+        val fix: Fix? = null,
     )
+
+    enum class Safety { SAFE, POTENTIALLY_UNSAFE, UNSAFE }
+    data class Edit(val start: Int, val end: Int, val text: String, val safety: Safety = Safety.SAFE)
+    data class Fix(val text: String, val safety: Safety, val edits: List<Edit> = emptyList())
 
     data class RelatedLocation(
         val message: String?,
@@ -50,6 +55,7 @@ internal object MagoLintReport {
             val message = issue.requiredString("message")
             val level = issue.requiredString("level")
             val code = issue.optionalString("code")
+            val fix = parseFix(issue.get("edits"), text, offsets, expectedPath, workingDirectory)
             val notes = issue.get("notes")?.takeUnless { it.isJsonNull }?.let { values ->
                 require(values.isJsonArray) { "Expected notes array" }
                 values.asJsonArray.map { value ->
@@ -99,7 +105,7 @@ internal object MagoLintReport {
                 if (offsets[start] < 0 || offsets[end] < 0) continue
                 val detail = annotation.optionalString("message")?.takeIf { it.isNotBlank() }
                 diagnostics.add(Diagnostic(TextRange(offsets[start], offsets[end]), message, code, level,
-                    detail, notes, help, relatedLocations, snapshotHash))
+                    detail, notes, help, relatedLocations, snapshotHash, fix))
             }
         }
         return diagnostics.toList()
@@ -107,6 +113,58 @@ internal object MagoLintReport {
 
     private fun JsonObject.requiredString(name: String): String =
         requireNotNull(optionalString(name)) { "Missing $name" }
+
+    private fun parseFix(value: JsonElement?, text: String, offsets: IntArray, expectedPath: String, workingDirectory: File?): Fix? {
+        if (value == null || value.isJsonNull) return null
+        return try {
+            require(value.isJsonArray)
+            val edits = mutableListOf<Edit>()
+            var safety = Safety.SAFE
+            fun integer(value: JsonElement): Int {
+                require(value.isJsonPrimitive && value.asJsonPrimitive.isNumber)
+                return requireNotNull(value.asString.toIntOrNull())
+            }
+            for (entry in value.asJsonArray) {
+                require(entry.isJsonArray && entry.asJsonArray.size() == 2)
+                val pair = entry.asJsonArray
+                val descriptor = pair[0].asJsonObject
+                val path = descriptor.optionalString("name")?.takeIf { it.isNotBlank() }
+                    ?: descriptor.optionalString("path")?.takeIf { it.isNotBlank() }
+                require(path != null && normalizePath(path, workingDirectory) == expectedPath)
+                require(pair[1].isJsonArray)
+                for (element in pair[1].asJsonArray) {
+                    val edit = element.asJsonObject
+                    val range = edit.getAsJsonObject("range")
+                    val start = integer(range.get("start"))
+                    val end = integer(range.get("end"))
+                    require(start in offsets.indices && end in offsets.indices && start <= end)
+                    require(offsets[start] >= 0 && offsets[end] >= 0)
+                    val level = when (edit.requiredString("safety")) {
+                        "safe" -> Safety.SAFE
+                        "potentiallyunsafe" -> Safety.POTENTIALLY_UNSAFE
+                        "unsafe" -> Safety.UNSAFE
+                        else -> error("Unknown edit safety")
+                    }
+                    if (level.ordinal > safety.ordinal) safety = level
+                    val bytes = edit.get("new_text")
+                    require(bytes.isJsonArray)
+                    val replacement = bytes.asJsonArray.map { byte ->
+                        val number = integer(byte)
+                        require(number in 0..255)
+                        number.toByte()
+                    }.toByteArray()
+                    val decoded = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(replacement)).toString()
+                    edits.add(Edit(offsets[start], offsets[end], decoded, level))
+                }
+            }
+            if (edits.isEmpty()) return null
+            Fix(MagoLintBatchFixes.stitch(text, edits), safety, edits.toList())
+        } catch (_: RuntimeException) {
+            null
+        } catch (_: java.nio.charset.CharacterCodingException) {
+            null
+        }
+    }
 
     private fun JsonObject.filePath(): String? {
         val fileId = get("file_id")?.takeUnless { it.isJsonNull } ?: return null
