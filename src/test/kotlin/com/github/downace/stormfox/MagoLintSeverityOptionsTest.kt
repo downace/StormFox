@@ -52,10 +52,15 @@ class MagoLintSeverityOptionsTest : BasePlatformTestCase() {
         assertTrue(combos.none { it.isEnabled })
 
         checkbox.doClick()
+        assertTrue(inspection.overrideSeverityLevels)
         assertTrue(combos.all { it.isEnabled })
         val warningCombo = combos[1]
         warningCombo.selectedItem = HighlightSeverity.INFORMATION
         assertEquals(HighlightSeverity.INFORMATION.name, inspection.warningSeverity)
+
+        checkbox.doClick()
+        assertFalse(inspection.overrideSeverityLevels)
+        assertTrue(combos.none { it.isEnabled })
     }
 
     fun testSeverityChoicesCapitalizeDisplayNames() {

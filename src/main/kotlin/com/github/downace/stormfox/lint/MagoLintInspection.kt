@@ -1,7 +1,6 @@
 package com.github.downace.stormfox.lint
 
 import com.intellij.codeInspection.LocalInspectionTool
-import com.intellij.codeInspection.ui.InspectionOptionsPanel
 import com.intellij.codeInspection.ex.ExternalAnnotatorBatchInspection
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.codeInsight.daemon.impl.SeverityRegistrar
@@ -14,6 +13,11 @@ import javax.swing.DefaultListCellRenderer
 import javax.swing.JComboBox
 import javax.swing.JPanel
 import javax.swing.DefaultComboBoxModel
+import javax.swing.JLabel
+import com.intellij.ui.components.JBCheckBox
+import java.awt.GridBagConstraints
+import java.awt.GridBagLayout
+import com.intellij.util.ui.JBUI
 import java.awt.event.HierarchyEvent
 import java.awt.event.HierarchyListener
 
@@ -34,10 +38,19 @@ class MagoLintInspection : LocalInspectionTool(), ExternalAnnotatorBatchInspecti
     override fun getGroupPath(): Array<String> = arrayOf("PHP", groupDisplayName)
     override fun isEnabledByDefault(): Boolean = false
 
-    @Suppress("DEPRECATION")
     override fun createOptionsPanel(): JPanel {
-        val panel = InspectionOptionsPanel(this)
-        val override = panel.addCheckboxEx("Override severity levels", "overrideSeverityLevels")
+        val panel = JPanel(GridBagLayout())
+        val constraints = GridBagConstraints().apply {
+            gridx = 0
+            gridy = 0
+            gridwidth = 2
+            anchor = GridBagConstraints.WEST
+            fill = GridBagConstraints.HORIZONTAL
+        }
+        val override = JBCheckBox("Override severity levels", overrideSeverityLevels)
+        panel.add(override, constraints)
+        override.addItemListener { overrideSeverityLevels = override.isSelected }
+        var row = 1
         val combos = mutableListOf<Pair<JComboBox<HighlightSeverity>, () -> String>>()
         fun registeredSeverities(project: Project?): List<HighlightSeverity> {
             val registrar = SeverityRegistrar.getSeverityRegistrar(project)
@@ -63,7 +76,20 @@ class MagoLintInspection : LocalInspectionTool(), ExternalAnnotatorBatchInspecti
             combo.selectedItem = severities.firstOrNull { it.name == current() }
             combo.isEnabled = overrideSeverityLevels
             combo.addActionListener { (combo.selectedItem as? HighlightSeverity)?.let { update(it.name) } }
-            panel.addLabeledRow(label, combo)
+            panel.add(JLabel(label), GridBagConstraints().apply {
+                gridx = 0
+                gridy = row
+                anchor = GridBagConstraints.WEST
+                insets = JBUI.insets(4, 0, 0, 8)
+            })
+            panel.add(combo, GridBagConstraints().apply {
+                gridx = 1
+                gridy = row++
+                anchor = GridBagConstraints.WEST
+                fill = GridBagConstraints.HORIZONTAL
+                weightx = 1.0
+                insets = JBUI.insets(4, 0, 0, 0)
+            })
             override.addItemListener { combo.isEnabled = override.isSelected }
             combos.add(combo to current)
         }
