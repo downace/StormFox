@@ -1,5 +1,6 @@
 package com.github.downace.stormfox.format
 
+import com.github.downace.stormfox.resolveMagoExecutable
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -7,7 +8,6 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CancellationException
 import com.intellij.openapi.diagnostic.Logger
-import com.intellij.openapi.util.SystemInfo
 import java.io.File
 import java.io.IOException
 import java.nio.charset.StandardCharsets
@@ -127,7 +127,7 @@ internal object MagoRunner {
             arguments += configPath
         }
         arguments += listOf("format", "--stdin-input", "--stdin-filepath", logicalPath)
-        return listOf(resolveExecutable(binary)) + arguments
+        return listOf(resolveMagoExecutable(binary)) + arguments
     }
 
     /**
@@ -153,17 +153,4 @@ internal object MagoRunner {
         return message
     }
 
-    private fun resolveExecutable(path: String): String {
-        val file = File(path)
-        if (file.isFile) {
-            return file.absolutePath
-        }
-        if (SystemInfo.isWindows && !path.endsWith(".exe", ignoreCase = true)) {
-            val executable = File("$path.exe")
-            if (executable.isFile) {
-                return executable.absolutePath
-            }
-        }
-        return path
-    }
 }

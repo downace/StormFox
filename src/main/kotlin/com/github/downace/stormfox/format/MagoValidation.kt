@@ -1,5 +1,6 @@
 package com.github.downace.stormfox.format
 
+import com.github.downace.stormfox.resolveMagoExecutable
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -7,8 +8,6 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.util.SystemInfo
-import java.io.File
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CancellationException
 
@@ -27,7 +26,7 @@ internal object MagoValidation {
         if (binaryPath.isBlank()) {
             return Result.Failure("The path to the mago binary is not set")
         }
-        return when (val outcome = run(listOf(resolveExecutable(binaryPath), "--version"))) {
+        return when (val outcome = run(listOf(resolveMagoExecutable(binaryPath), "--version"))) {
             is Result.Success -> Result.Success(outcome.message.trim().ifEmpty { "mago is available" })
             is Result.Failure -> outcome
         }
@@ -40,7 +39,7 @@ internal object MagoValidation {
         if (configPath.isBlank()) {
             return Result.Success("Not set - mago uses the configuration of the project")
         }
-        return when (val outcome = run(listOf(resolveExecutable(binaryPath), "--config", configPath, "config"))) {
+        return when (val outcome = run(listOf(resolveMagoExecutable(binaryPath), "--config", configPath, "config"))) {
             is Result.Success -> Result.Success("Configuration is valid")
             is Result.Failure -> outcome
         }
@@ -82,17 +81,4 @@ internal object MagoValidation {
         }
     }
 
-    private fun resolveExecutable(path: String): String {
-        val file = File(path)
-        if (file.isFile) {
-            return file.absolutePath
-        }
-        if (SystemInfo.isWindows && !path.endsWith(".exe", ignoreCase = true)) {
-            val executable = File("$path.exe")
-            if (executable.isFile) {
-                return executable.absolutePath
-            }
-        }
-        return path
-    }
 }

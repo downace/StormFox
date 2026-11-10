@@ -1,12 +1,12 @@
 package com.github.downace.stormfox.lint
 
+import com.github.downace.stormfox.resolveMagoExecutable
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.openapi.util.SystemInfo
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.google.gson.JsonParser
 import java.io.File
@@ -34,14 +34,8 @@ internal object MagoLintRunner {
     }
 
     private fun globalArguments(binary: String, configPath: String): List<String> {
-        val file = File(binary)
-        val executable = when {
-            file.isFile -> file.absolutePath
-            SystemInfo.isWindows && !binary.endsWith(".exe", true) && File("$binary.exe").isFile -> File("$binary.exe").absolutePath
-            else -> binary
-        }
         return buildList {
-            add(executable)
+            add(resolveMagoExecutable(binary))
             if (configPath.isNotBlank()) addAll(listOf("--config", configPath))
         }
     }
