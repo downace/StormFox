@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "skills": {
+    "jetbrains-plugin-development": {
+      "source": "buyoung/skills",
+      "sourceType": "github",
+      "skillPath": "skills/jetbrains-plugin-development/SKILL.md",
+      "computedHash": "72f02f5a8438fa4261fd7e28a05fbe1fe2f4bc5a6d032808ea77e9e4e139aec0"
+    }
+  }
+}
