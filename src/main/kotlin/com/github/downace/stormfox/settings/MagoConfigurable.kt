@@ -1,7 +1,8 @@
 package com.github.downace.stormfox.settings
 
 import com.intellij.icons.AllIcons
-import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.progress.ProcessCanceledException
+import java.util.concurrent.CancellationException
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ex.ConfigurableExtensionPointUtil
@@ -55,7 +56,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
     override fun getDisplayName(): String = "Mago"
 
     override fun createComponent(): JComponent {
-        val settingsUi = ui ?: SettingsUi().also { ui = it }
+        val settingsUi = ui ?: SettingsUi(project.getService(MagoSettingsValidationService::class.java).createSession()).also { ui = it }
         settingsUi.reset()
         return settingsUi.panel
     }
@@ -71,10 +72,13 @@ class MagoConfigurable(private val project: Project) : Configurable {
     }
 
     override fun disposeUIResources() {
+        ui?.dispose()
         ui = null
     }
 
-    private class SettingsUi {
+    private class SettingsUi(private val validation: MagoSettingsValidationService.Session) {
+
+        fun dispose() = validation.dispose()
 
         private val enabledCheckBox = JBCheckBox("Use Mago formatter")
 
@@ -284,25 +288,28 @@ class MagoConfigurable(private val project: Project) : Configurable {
                 validateButton.isEnabled = false
                 status.show(StatusLine.Kind.CHECKING, CHECKING_TEXT)
 
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    val result = try {
+                validation.validate(check = {
+                    try {
                         check(binaryPath, ownPath)
+                    } catch (e: ProcessCanceledException) {
+                        throw e
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         MagoValidation.Result.Failure(e.message ?: e.toString())
                     }
-                    ApplicationManager.getApplication().invokeLater {
-                        checkRunning = false
-                        validateButton.isEnabled = true
-                        if (binaryField.text.trim() != binaryPath || field.text.trim() != ownPath) {
-                            status.show(StatusLine.Kind.STALE, NOT_VALIDATED_TEXT)
-                        } else {
-                            when (result) {
-                                is MagoValidation.Result.Success -> status.show(StatusLine.Kind.SUCCESS, result.message)
-                                is MagoValidation.Result.Failure -> status.show(StatusLine.Kind.ERROR, result.message)
-                            }
+                }, update = { result ->
+                    checkRunning = false
+                    validateButton.isEnabled = true
+                    if (binaryField.text.trim() != binaryPath || field.text.trim() != ownPath) {
+                        status.show(StatusLine.Kind.STALE, NOT_VALIDATED_TEXT)
+                    } else {
+                        when (result) {
+                            is MagoValidation.Result.Success -> status.show(StatusLine.Kind.SUCCESS, result.message)
+                            is MagoValidation.Result.Failure -> status.show(StatusLine.Kind.ERROR, result.message)
                         }
                     }
-                }
+                })
             }
         }
 

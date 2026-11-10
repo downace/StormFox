@@ -4,9 +4,13 @@ import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.diagnostic.Logger
+import com.intellij.openapi.progress.EmptyProgressIndicator
+import com.intellij.openapi.progress.ProcessCanceledException
+import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.util.SystemInfo
 import java.io.File
 import java.nio.charset.StandardCharsets
+import java.util.concurrent.CancellationException
 
 internal object MagoValidation {
 
@@ -43,6 +47,7 @@ internal object MagoValidation {
     }
 
     private fun run(arguments: List<String>): Result {
+        ProgressManager.checkCanceled()
         val commandLine = GeneralCommandLine(arguments).withCharset(StandardCharsets.UTF_8)
 
         val handler = try {
@@ -53,7 +58,10 @@ internal object MagoValidation {
         }
 
         return try {
-            val output = handler.runProcess(TIMEOUT_MS, true)
+            val indicator = ProgressManager.getInstance().progressIndicator ?: EmptyProgressIndicator()
+            indicator.checkCanceled()
+            val output = handler.runProcessWithProgressIndicator(indicator, TIMEOUT_MS, true)
+            indicator.checkCanceled()
             if (output.isTimeout) {
                 return Result.Failure("mago did not answer within ${TIMEOUT_MS / 1000} seconds")
             }
@@ -62,6 +70,10 @@ internal object MagoValidation {
                 return Result.Failure(message.ifEmpty { "mago exited with code ${output.exitCode}" })
             }
             return Result.Success(output.stdout)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             LOG.warn("mago validation failed", e)
             return Result.Failure(e.message ?: e.toString())
