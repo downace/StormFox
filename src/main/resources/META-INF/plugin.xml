@@ -14,7 +14,7 @@
     </ul>
     <h3>Getting started</h3>
     <ol>
-        <li><a href="https://mago.carthage.software/1.59.0/en/guide/installation/">Install Mago</a> and make sure it runs on your machine.</li>
+        <li><a href="https://mago.carthage.software/latest/en/guide/installation/">Install Mago</a> and make sure it runs on your machine.</li>
         <li>Open <b>Settings | PHP | Quality Tools | Mago</b> and set <b>Mago executable</b> to the path of the binary.</li>
     </ol>
     <ul>
@@ -25,7 +25,10 @@
     ]]></description>
 
     <change-notes><![CDATA[
-    <p>First release: <a href="https://mago.carthage.software/">Mago</a> integration with PHP formatting and lint inspections.</p>
+    <ul>
+        <li><b><a href="https://mago.carthage.software/latest/en/tools/linter/overview/">Mago Linter</a> inspection with Quick Fixes.</b></li>
+        <li>JSON schema support and a dedicated icon for Mago configuration files.</li>
+    </ul>
     ]]></change-notes>
 
     <depends>com.intellij.modules.platform</depends>
