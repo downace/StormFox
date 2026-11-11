@@ -1,27 +1,35 @@
 # StormFox
 
+[<img src="https://img.shields.io/jetbrains/plugin/v/35857" alt="JetBrains Plugin Version">](https://plugins.jetbrains.com/plugin/35857)
+[<img src="https://img.shields.io/jetbrains/plugin/d/35857" alt="JetBrains Plugin Downloads">](https://plugins.jetbrains.com/plugin/35857)
+
 [Mago](https://mago.carthage.software/) integration for PhpStorm: format PHP code and inspect stylistic issues, inconsistencies, and code smells using your project's Mago configuration.
 
-![PHP formatted by Mago](docs/marketplace/screenshots/ide-3.gif)
+![PHP Mago inspections and Quick Fixes](docs/marketplace/screenshots/ide-3.gif)
 
 Requires PhpStorm 2024.3 or newer.
 
-### Setup
+## Setup
 
 1. Install [Mago](https://mago.carthage.software/) and make sure it runs on your machine.
-2. Open **Settings | PHP | Quality Tools | Mago** and set **Mago executable** to the binary.
+2. Install StormFox plugin from the [releases page](https://github.com/downace/StormFox/releases), [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35857), or directly in the IDE via **Settings | Plugins | Marketplace** (search for **StormFox** or **Mago**).
+3. Open **Settings | PHP | Quality Tools | Mago** and set **Mago executable** to the binary.
 
-### Usage
+## Usage
+
+### Formatter
 
 Turn on **Use Mago formatter** in **Settings | PHP | Quality Tools | Mago**,
 so the **Reformat code** action uses Mago instead of the default formatter for PHP files.
 
 Turn on **Reformat code** in **Settings | Tools | Actions on Save**, so Mago is used to format PHP files on save.
 
+### Linter, Analyzer and Guard
+
 Enable corresponding inspection in **Settings | Editor | Inspections | PHP | Quality tools**
 to show Mago findings in the editor.
 
-### Things to know
+## Things to know
 
 * While the formatter is on, Mago replaces the IDE code style for PHP files: the
   **Settings | Editor | Code Style | PHP** page no longer affects them.
