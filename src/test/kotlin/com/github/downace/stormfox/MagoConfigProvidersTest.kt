@@ -4,6 +4,7 @@ import com.github.downace.stormfox.config.MagoConfigIconProvider
 import com.github.downace.stormfox.config.MagoJsonSchemaProviderFactory
 import com.github.downace.stormfox.config.MagoJsonSchemaProvider
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.util.IconLoader
 import com.intellij.testFramework.PlatformTestUtil
 import com.jetbrains.jsonSchema.ide.JsonSchemaService
 import com.sun.net.httpserver.HttpServer
@@ -27,6 +28,7 @@ class MagoConfigProvidersTest : BasePlatformTestCase() {
     }
 
     fun testAllConfigNamesHaveIconAndSchema() {
+        IconLoader.activate()
         val iconProvider = MagoConfigIconProvider()
         val schemaProvider = MagoJsonSchemaProviderFactory().getProviders(project).single()
         for (extension in listOf("toml", "yaml", "yml", "json")) {

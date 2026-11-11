@@ -1,6 +1,7 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.config.MagoConfigIconProvider
+import com.intellij.openapi.util.IconLoader
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.lang.reflect.Modifier
@@ -11,6 +12,7 @@ import java.net.URLStreamHandler
 
 class MagoConfigIconOwnershipTest : BasePlatformTestCase() {
     fun testCachedIconLoadersHaveNoPluginOwner() {
+        IconLoader.activate()
         val icon = requireNotNull(MagoConfigIconProvider().getIcon(LightVirtualFile("mago.toml"), 0, project))
         assertEquals(16, icon.iconWidth)
         assertEquals(16, icon.iconHeight)
