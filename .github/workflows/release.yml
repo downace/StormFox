@@ -33,6 +33,15 @@ jobs:
           name: plugin-verifier-reports
           path: build/reports/pluginVerifier/**
           if-no-files-found: ignore
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            build/test-results/test/**
+            build/reports/tests/test/**
+          if-no-files-found: ignore
       - name: Create GitHub release
         env:
           GH_TOKEN: ${{ github.token }}

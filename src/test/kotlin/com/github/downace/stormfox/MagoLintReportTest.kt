@@ -7,11 +7,14 @@ import org.junit.Test
 import java.io.File
 
 class MagoLintReportTest {
-    private fun issue(start: Int = 0, end: Int = 1, path: String = "C:/project/source.php", kind: String = "Primary", detail: String = "Detail") =
-        """{"level":"Error","code":"example","message":"Issue","annotations":[{"kind":"$kind","message":"$detail","span":{"file_id":{"name":"$path"},"start":{"offset":$start},"end":{"offset":$end}}}]}"""
+    private val workingDirectory = File("project").absoluteFile
+    private val logicalPath = File(workingDirectory, "source.php").invariantSeparatorsPath
 
-    private fun parse(issues: String, text: String = "abc") =
-        MagoLintReport.parse("""{"issues":[$issues]}""", text, "C:/project/source.php", File("C:/project"))
+    private fun issue(start: Int = 0, end: Int = 1, path: String = logicalPath, kind: String = "Primary", detail: String = "Detail") =
+        """{"level":"Error","code":"example","message":"Issue","annotations":[{"kind":"$kind","message":"$detail","span":{"file_id":{"name":${com.google.gson.JsonPrimitive(path)}},"start":{"offset":$start},"end":{"offset":$end}}}]}"""
+
+    private fun parse(issues: String, text: String = "abc", path: String = logicalPath, directory: File? = workingDirectory) =
+        MagoLintReport.parse("""{"issues":[$issues]}""", text, path, directory)
 
     @Test fun convertsUtf8ToUtf16() {
         val result = parse(issue(2, 6), "Я😀x").single()
@@ -34,14 +37,17 @@ class MagoLintReportTest {
     }
 
     @Test fun filtersForeignAndSecondaryAnnotations() {
-        assertTrue(parse(issue(path = "C:/other/source.php")).isEmpty())
+        assertTrue(parse(issue(path = File(workingDirectory, "other/source.php").invariantSeparatorsPath)).isEmpty())
         assertTrue(parse(issue(kind = "Secondary")).isEmpty())
         assertTrue(parse(issue(path = "other/source.php")).isEmpty())
     }
 
-    @Test fun resolvesRelativePathsAndNormalizesWindowsPaths() {
+    @Test fun resolvesRelativePaths() {
         assertEquals(1, parse(issue(path = "./source.php")).size)
-        assertEquals(1, parse(issue(path = "C:\\\\PROJECT\\\\source.php")).size)
+    }
+
+    @Test fun normalizesWindowsDriveCaseAndSlashesIndependentlyOfHost() {
+        assertEquals(1, parse(issue(path = "c:\\PROJECT\\source.php"), path = "C:/project/source.php", directory = null).size)
     }
 
     @Test fun deduplicatesIssuesAndMessages() {
@@ -53,7 +59,7 @@ class MagoLintReportTest {
     @Test fun acceptsRelativeNameWithDiskPathPresent() {
         val issue = com.google.gson.JsonParser.parseString(issue(path = "source.php")).asJsonObject
         issue.getAsJsonArray("annotations")[0].asJsonObject.getAsJsonObject("span")
-            .getAsJsonObject("file_id").addProperty("path", "\\\\?\\C:\\project\\source.php")
+            .getAsJsonObject("file_id").addProperty("path", File(workingDirectory, "different/source.php").invariantSeparatorsPath)
         assertEquals(1, parse(issue.toString()).size)
     }
 
