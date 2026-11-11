@@ -7,7 +7,7 @@ import com.intellij.modcommand.Presentation
 import com.intellij.openapi.vfs.VirtualFile
 
 internal class MagoShowRelatedLocationsAction(
-    private val locations: List<MagoLintReport.RelatedLocation>,
+    private val locations: List<MagoDiagnosticReport.RelatedLocation>,
     private val snapshotHash: String,
     private val sourceFile: VirtualFile,
 ) : ModCommandAction {

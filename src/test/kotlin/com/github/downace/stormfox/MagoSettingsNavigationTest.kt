@@ -18,18 +18,23 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         val configurable = extension.createConfigurable() as MagoConfigurable
         try {
             val component = configurable.createComponent()
-            val links = descendants(component).filterIsInstance<HyperlinkLabel>()
-                .filter { it.text.contains("Mago inspection") }.toList()
-            assertEquals(1, links.size)
-            val listeners = HyperlinkLabel::class.java.getDeclaredField("myListeners").apply {
-                isAccessible = true
-            }.get(links.single()) as List<*>
-            assertTrue(
-                "The inspection link must use PHP's settings navigation helper",
-                listeners.any {
-                    it?.javaClass?.name?.startsWith("com.jetbrains.php.lang.inspections.PhpInspectionsUtil$") == true
-                },
+            val links = descendants(component).filterIsInstance<HyperlinkLabel>().associateBy { it.text }
+            assertEquals(
+                setOf("Mago Linter inspection", "Mago Analyzer inspection", "Mago Guard inspection"),
+                links.keys.filter { it.startsWith("Mago ") && it.endsWith(" inspection") }.toSet(),
             )
+            listOf("Mago Linter inspection", "Mago Analyzer inspection", "Mago Guard inspection").forEach { label ->
+                val link = links.getValue(label)
+                val listeners = HyperlinkLabel::class.java.getDeclaredField("myListeners").apply {
+                    isAccessible = true
+                }.get(link) as List<*>
+                assertTrue(
+                    "The inspection link must use PHP's settings navigation helper",
+                    listeners.any {
+                        it?.javaClass?.name?.startsWith("com.jetbrains.php.lang.inspections.PhpInspectionsUtil$") == true
+                    },
+                )
+            }
         } finally {
             configurable.disposeUIResources()
         }
@@ -44,6 +49,8 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
             assertNotNull(configurable.createComponent())
             configurable.reset()
             configurable.selectInspectionTool("MagoLint")
+            configurable.selectInspectionTool("MagoAnalyze")
+            configurable.selectInspectionTool("MagoGuard")
         } finally {
             configurable.disposeUIResources()
         }

@@ -10,31 +10,31 @@ import com.intellij.modcommand.Presentation
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
 
-internal class MagoApplyLintFixAction(
-    private val fix: MagoLintReport.Fix,
+internal class MagoApplyFixAction(
+    private val fix: MagoDiagnosticReport.Fix,
     private val snapshotHash: String,
     private val sourceFile: VirtualFile,
     code: String?,
     message: String,
     private val options: List<IntentionAction> = emptyList(),
     overrideLabel: String? = null,
-    baseLabel: String = "Mago Linter: Fix ${code ?: message}",
+    baseLabel: String = "Mago: Fix ${code ?: message}",
     private val showPreview: Boolean = true,
     private val priority: PriorityAction.Priority = PriorityAction.Priority.HIGH,
 ) : ModCommandAction {
     internal val label = overrideLabel ?: (baseLabel + when (fix.safety) {
-        MagoLintReport.Safety.SAFE -> ""
-        MagoLintReport.Safety.POTENTIALLY_UNSAFE -> " (potentially unsafe)"
-        MagoLintReport.Safety.UNSAFE -> " (unsafe)"
+        MagoDiagnosticReport.Safety.SAFE -> ""
+        MagoDiagnosticReport.Safety.POTENTIALLY_UNSAFE -> " (potentially unsafe)"
+        MagoDiagnosticReport.Safety.UNSAFE -> " (unsafe)"
     })
 
-    override fun getFamilyName(): String = "Mago Linter"
+    override fun getFamilyName(): String = "Mago"
 
-    override fun asIntention(): IntentionAction = MagoLintFixIntention(
+    override fun asIntention(): IntentionAction = MagoFixIntention(
         this,
         super<ModCommandAction>.asIntention(),
         label,
-        label.removePrefix("Mago Linter: "),
+        label.removePrefix("Mago: "),
         options,
         if (showPreview) null else IntentionPreviewInfo.EMPTY,
         priority,

@@ -47,7 +47,8 @@ class MagoInspectionResultsLifetimeTest : BasePlatformTestCase() {
         val jar = directory.resolve("lifetime.jar")
         val sourcePackage = "com/github/downace/stormfox/lint/"
         val targetPackage = "stormfox/lifetime/fixture/"
-        val names = listOf("MagoInspectionResultsLifetime", "MagoLintInspection", "MagoLintInspection\$Companion")
+        val names = listOf("MagoInspectionResultsLifetime", "MagoLintInspection", "MagoLintInspection\$Companion",
+            "MagoDiagnosticInspection", "MagoDiagnosticInspection\$createOptionsPanel\$addChoice\$1", "MagoTool")
         val remapper = SimpleRemapper(names.associate { sourcePackage + it to targetPackage + it })
         JarOutputStream(Files.newOutputStream(jar)).use { output ->
             output.putNextEntry(JarEntry("META-INF/plugin.xml"))
@@ -78,8 +79,9 @@ class MagoInspectionResultsLifetimeTest : BasePlatformTestCase() {
             assertNotNull(application.getServiceIfCreated(lifetimeClass))
             val affected = createResults(manager, MagoLintInspection()).also(contexts::add)
             val unrelated = createResults(manager, UnrelatedInspection()).also(contexts::add)
-            val secondAffected = createResults(manager, MagoLintInspection()).also(contexts::add)
-            val views = listOf(affected.view!!, secondAffected.view!!)
+            val secondAffected = createResults(manager, com.github.downace.stormfox.lint.MagoAnalyzeInspection()).also(contexts::add)
+            val guardAffected = createResults(manager, com.github.downace.stormfox.lint.MagoGuardInspection()).also(contexts::add)
+            val views = listOf(affected.view!!, secondAffected.view!!, guardAffected.view!!)
 
             val unloaded = DynamicPlugins.unloadPlugin(descriptor)
             loaded = false
@@ -88,6 +90,7 @@ class MagoInspectionResultsLifetimeTest : BasePlatformTestCase() {
             assertTrue(views.all { it.isDisposed })
             assertFalse(manager.runningContexts.contains(affected))
             assertFalse(manager.runningContexts.contains(secondAffected))
+            assertFalse(manager.runningContexts.contains(guardAffected))
             assertTrue(manager.runningContexts.contains(unrelated))
             assertFalse(unrelated.view!!.isDisposed)
         } finally {
@@ -119,7 +122,7 @@ class MagoInspectionResultsLifetimeTest : BasePlatformTestCase() {
         try {
             val affected = createResults(manager, MagoLintInspection()).also(contexts::add)
             val unrelated = createResults(manager, UnrelatedInspection()).also(contexts::add)
-            val secondAffected = createResults(manager, MagoLintInspection()).also(contexts::add)
+            val secondAffected = createResults(manager, com.github.downace.stormfox.lint.MagoAnalyzeInspection()).also(contexts::add)
             val affectedView = affected.view!!
             val unrelatedView = unrelated.view!!
             val secondAffectedView = secondAffected.view!!

@@ -1,7 +1,7 @@
 package com.github.downace.stormfox
 
-import com.github.downace.stormfox.lint.MagoLintReport
-import com.github.downace.stormfox.lint.MagoLintTooltip
+import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
+import com.github.downace.stormfox.lint.MagoDiagnosticTooltip as MagoLintTooltip
 import com.github.downace.stormfox.lint.MagoRelatedNavigation
 import com.github.downace.stormfox.lint.MagoShowRelatedLocationsAction
 import com.intellij.codeInsight.hint.TooltipLinkHandlerEP
@@ -17,6 +17,27 @@ import com.intellij.psi.PsiDocumentManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class MagoLintTooltipTest : BasePlatformTestCase() {
+    fun testAllToolsShareSummaryFallbackAndPreserveDistinctIssueInDetails() {
+        for (source in com.github.downace.stormfox.lint.MagoTool.entries) {
+            for (primary in listOf("This must be declared as `final`", null, " \t", "Structural flaw in App\\Models\\Shipment")) {
+                val message = "Structural flaw in App\\Models\\Shipment"
+                val diagnostic = diagnostic(message = message, primary = primary, code = null).copy(source = source)
+                val compact = MagoLintTooltip.compact(diagnostic)
+                if (primary != null && primary.isNotBlank() && primary != message) {
+                    assertTrue(compact.contains("This must be declared as <code>final</code>"))
+                    assertFalse(compact.contains(message))
+                    val details = expanded(compact)
+                    assertEquals(1, Regex(Regex.escape(message)).findAll(details).count())
+                    assertFalse(details.contains("This must be declared"))
+                } else {
+                    assertEquals(1, Regex(Regex.escape(message)).findAll(compact).count())
+                    assertNull(MagoLintTooltip.expanded(diagnostic))
+                    assertFalse(compact.contains("Details"))
+                }
+            }
+        }
+    }
+
     fun testCompactTooltipUsesPrimaryMessageAndInlineRuleCode() {
         val diagnostic = diagnostic(
             message = "Issue from the rule.",
@@ -25,7 +46,7 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
             help = "Use the callable syntax.",
         )
         val compact = MagoLintTooltip.compact(diagnostic)
-        assertTrue(compact.startsWith("<html><b>Mago Linter</b>: This arrow function can be simplified to the <code>...</code> syntax."))
+        assertTrue(compact.startsWith("<html><b>Mago</b>: This arrow function can be simplified to the <code>...</code> syntax."))
         assertTrue(compact.contains("<code>prefer-first-class-callable</code>"))
         assertTrue(compact.indexOf("<code>prefer-first-class-callable</code>") < compact.indexOf("Details"))
         assertFalse(compact.contains("Issue from the rule"))
@@ -42,7 +63,7 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
     fun testTopLevelMessageIsFallbackAndNotRepeatedInDetails() {
         val diagnostic = diagnostic(message = "Fallback message", primary = null, code = null, help = "More detail")
         val compact = MagoLintTooltip.compact(diagnostic)
-        assertTrue(compact.contains("<b>Mago Linter</b>: Fallback message"))
+        assertTrue(compact.contains("<b>Mago</b>: Fallback message"))
         val details = expanded(compact)
         assertFalse(details.contains("Fallback message"))
         assertTrue(details.contains("More detail"))

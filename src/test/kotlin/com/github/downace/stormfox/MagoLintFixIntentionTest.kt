@@ -1,8 +1,8 @@
 package com.github.downace.stormfox
 
-import com.github.downace.stormfox.lint.MagoApplyLintFixAction
-import com.github.downace.stormfox.lint.MagoLintFixIntention
-import com.github.downace.stormfox.lint.MagoLintReport
+import com.github.downace.stormfox.lint.MagoApplyFixAction as MagoApplyLintFixAction
+import com.github.downace.stormfox.lint.MagoFixIntention as MagoLintFixIntention
+import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
 import com.github.downace.stormfox.lint.MagoRelatedNavigation
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.IntentionActionWithOptions
@@ -31,7 +31,7 @@ class MagoLintFixIntentionTest : BasePlatformTestCase() {
         val intention = commandAction.asIntention() as MagoLintFixIntention
 
         assertSame(commandAction, intention.asModCommandAction())
-        assertEquals("Mago Linter: Fix prefer-first-class-callable", intention.getText())
+        assertEquals("Mago: Fix prefer-first-class-callable", intention.getText())
         assertEquals("Fix prefer-first-class-callable", intention.getTooltipText())
         assertTrue(intention.isAvailable(project, myFixture.editor, myFixture.file))
         assertFalse(intention.startInWriteAction())
@@ -46,7 +46,7 @@ class MagoLintFixIntentionTest : BasePlatformTestCase() {
     fun testTooltipRemovesPrefixButKeepsRiskSuffixAndLeavesChildLabelAlone() {
         myFixture.configureByText("Sample.php", "<?php echo 1;")
         val risky = action(MagoLintReport.Safety.UNSAFE).asIntention() as MagoLintFixIntention
-        assertEquals("Mago Linter: Fix prefer-first-class-callable (unsafe)", risky.getText())
+        assertEquals("Mago: Fix prefer-first-class-callable (unsafe)", risky.getText())
         assertEquals("Fix prefer-first-class-callable (unsafe)", risky.getTooltipText())
 
         val child = MagoApplyLintFixAction(

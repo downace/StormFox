@@ -8,11 +8,16 @@
   no entry of its own in *Actions on Save* — two on-save paths would format the file twice.
   `testPluginDoesNotRegisterItsOwnActionsOnSaveEntry` guards it.
 * **Keep extension points focused.** `formattingService` and `projectConfigurable` handle formatting
-  and settings; `localInspection` and `externalAnnotator` handle linting;
+  and settings; `localInspection` and `externalAnnotator` handle diagnostics;
   `fileIconProvider` and `JavaScript.JsonSchema.ProviderFactory` support Mago configuration files.
   The plugin still registers no Actions on Save entry.
-* **The plugin never writes to a file.** Formatting and linting read the editor buffer through
-  stdin. Formatting returns the result to the document; linting returns diagnostics.
+* **The plugin never writes to a file.** Formatting and inspections read the editor buffer
+  through stdin. Formatting returns the result to the document; inspections return diagnostics.
+* **Independent inspections, shared execution.** `MagoLint`, `MagoAnalyze` and `MagoGuard` keep separate
+  profile and severity settings. Their project service runs the tools independently; a slow check must
+  not delay lint findings. Editor annotators publish cached results, while batch inspection waits
+  for complete results. Cache invalidation must account for configuration and dependency changes,
+  not just the current document: analysis and architectural checks read other project files.
 * **Whole files only.** The formatting service does not offer `FORMAT_FRAGMENTS`, so selections and
   "changed lines only" ranges fall back to the IDE's own formatter.
 * **Success is silent.** A successful format says nothing. Only errors surface, as a balloon with an
@@ -48,7 +53,7 @@ Use JDK 25 through `JAVA_HOME`. The default compile SDK is PhpStorm 2026.3; an i
 be selected with `"-Pplatform.localPath=/path/to/PhpStorm"`.
 
 1. `./gradlew test` — done when green.
-2. `./gradlew buildPlugin` — done when `build/distributions/stormfox-0.1.0.zip` is rebuilt.
+2. `./gradlew buildPlugin` — done when the versioned ZIP in `build/distributions` is rebuilt.
 3. `./gradlew verifyPlugin` — runs the JetBrains Plugin Verifier against the IDEs listed in
    `pluginVerification.ides`: the oldest one we support, one in between, and the newest PhpStorm
    release, which `latest()` picks up on its own. The tag-triggered release workflow runs tests,

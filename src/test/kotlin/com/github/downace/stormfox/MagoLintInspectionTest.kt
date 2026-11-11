@@ -1,9 +1,10 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.lint.MagoLintAnnotator
+import com.github.downace.stormfox.lint.MagoDiagnosticAnnotator
 import com.github.downace.stormfox.lint.MagoLintInspection
-import com.github.downace.stormfox.lint.MagoLintReport
-import com.github.downace.stormfox.lint.MagoLintRunner
+import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
+import com.github.downace.stormfox.lint.MagoDiagnosticRunner as MagoLintRunner
 import com.github.downace.stormfox.settings.MagoSettings
 import com.intellij.codeInsight.daemon.HighlightDisplayKey
 import com.intellij.codeInsight.daemon.impl.AnnotationHolderImpl
@@ -22,9 +23,36 @@ import java.lang.reflect.Proxy
 import java.nio.file.Files
 
 class MagoLintInspectionTest : BasePlatformTestCase() {
+    fun testAllToolsUseOneConciseSummaryInAnnotationsAndProblems() {
+        val text = "<?php echo 1;"
+        myFixture.configureByText("Sample.php", text)
+        myFixture.enableInspections(MagoLintInspection(),
+            com.github.downace.stormfox.lint.MagoAnalyzeInspection(),
+            com.github.downace.stormfox.lint.MagoGuardInspection())
+        for (source in com.github.downace.stormfox.lint.MagoTool.entries) {
+            for (primary in listOf("This must be declared as `final`", null, " \t", "Structural flaw in App\\Models\\Shipment")) {
+                val message = "Structural flaw in App\\Models\\Shipment"
+                val diagnostic = MagoLintReport.Diagnostic(TextRange(6, 10), message, "must-be-final",
+                    "Warning", primary, source = source)
+                val holder = AnnotationHolderImpl(AnnotationSession(myFixture.file), true)
+                holder.runAnnotatorWithContext(myFixture.file) { _, target ->
+                    MagoDiagnosticAnnotator(source).apply(myFixture.file,
+                        MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(listOf(diagnostic))), target)
+                }
+                holder.assertAllAnnotationsCreated()
+                val expected = "Mago: ${primary?.takeIf { it.isNotBlank() } ?: message} [must-be-final]"
+                assertEquals(expected, holder.single().message)
+                assertEquals(expected,
+                    ProblemDescriptorUtil.convertToProblemDescriptors(holder, myFixture.file).single().descriptionTemplate)
+                assertFalse(holder.single().message.contains("\n"))
+            }
+        }
+    }
+
     fun testRegisteredDisabled() {
         val inspection = MagoLintInspection()
         assertFalse(inspection.isEnabledByDefault)
+        assertEquals("Mago Linter validation", inspection.displayName)
         assertEquals(listOf("PHP", "Quality tools"), inspection.groupPath.toList())
         assertTrue(ExtensionPointName<com.intellij.codeInspection.LocalInspectionEP>("com.intellij.localInspection").extensionList.any {
             it.implementationClass == MagoLintInspection::class.java.name
@@ -33,8 +61,8 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
             it.implementationClass == MagoLintAnnotator::class.java.name
         })
         assertTrue(com.intellij.codeInsight.hint.TooltipLinkHandlerEP.EP_NAME.extensionList.any {
-            it.prefix == com.github.downace.stormfox.lint.MagoLintTooltip.PREFIX &&
-                it.handlerClassName == com.github.downace.stormfox.lint.MagoLintTooltipLinkHandler::class.java.name
+            it.prefix == com.github.downace.stormfox.lint.MagoDiagnosticTooltip.PREFIX &&
+                it.handlerClassName == com.github.downace.stormfox.lint.MagoDiagnosticTooltipLinkHandler::class.java.name
         })
     }
 
@@ -59,8 +87,8 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
 
     fun testSnapshotRejectsChangedText() {
         val snapshot = snapshot("<?php echo 1;")
-        assertTrue(MagoLintAnnotator.isCurrent(snapshot, snapshot.text))
-        assertFalse(MagoLintAnnotator.isCurrent(snapshot, "<?php echo 2;"))
+        assertTrue(MagoDiagnosticAnnotator.isCurrent(snapshot, snapshot.text))
+        assertFalse(MagoDiagnosticAnnotator.isCurrent(snapshot, "<?php echo 2;"))
     }
 
     fun testAnnotationsUseInspectionSeverityAndReportedRange() {
@@ -81,24 +109,24 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
             if (method.name == "newAnnotation") builder else null
         } as AnnotationHolder
         val range = TextRange(6, 10)
-        val report = MagoLintAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(
+        val report = MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(
             listOf(
                 MagoLintReport.Diagnostic(range, "Avoid echo", "test-rule", "Warning"),
                 MagoLintReport.Diagnostic(range, "Syntax error", null, "Error"),
             ),
         ))
         MagoLintAnnotator().apply(myFixture.file, report, holder)
-        assertTrue(calls.contains("newAnnotation" to listOf(HighlightSeverity.ERROR, "Mago Linter: Avoid echo [test-rule]")))
-        assertTrue(calls.contains("newAnnotation" to listOf(HighlightSeverity.ERROR, "Mago Linter: Syntax error")))
+        assertTrue(calls.contains("newAnnotation" to listOf(HighlightSeverity.ERROR, "Mago: Avoid echo [test-rule]")))
+        assertTrue(calls.contains("newAnnotation" to listOf(HighlightSeverity.ERROR, "Mago: Syntax error")))
         assertTrue(calls.contains("range" to listOf(range)))
         assertTrue(calls.any { it.first == "create" })
         calls.clear()
-        val staleReport = MagoLintAnnotator.Report(snapshot("<?php echo 2;"), report.result)
+        val staleReport = MagoDiagnosticAnnotator.Report(snapshot("<?php echo 2;"), report.result)
         MagoLintAnnotator().apply(myFixture.file, staleReport, holder)
         assertEmpty(calls)
-        val failure = MagoLintAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago"))
+        val failure = MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago"))
         MagoLintAnnotator().apply(myFixture.file, failure, holder)
-        assertTrue(calls.contains("newAnnotation" to listOf(HighlightSeverity.ERROR, "Mago Linter: Cannot start Mago")))
+        assertTrue(calls.contains("newAnnotation" to listOf(HighlightSeverity.ERROR, "Mago: Cannot start Mago")))
         assertTrue(calls.any { it.first == "fileLevel" })
     }
 
@@ -125,7 +153,7 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         inspection.warningSeverity = HighlightSeverity.WARNING.name
         inspection.errorSeverity = HighlightSeverity.ERROR.name
         val range = TextRange(6, 10)
-        val report = MagoLintAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(
+        val report = MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(
             listOf("Note", "Help", "Warning", "Error").map {
                 MagoLintReport.Diagnostic(range, it, null, it)
             },
@@ -150,7 +178,7 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         val failureHolder = AnnotationHolderImpl(AnnotationSession(myFixture.file), true)
         failureHolder.runAnnotatorWithContext(myFixture.file) { _, target ->
             MagoLintAnnotator().apply(myFixture.file,
-                MagoLintAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago")), target)
+                MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago")), target)
         }
         assertEquals(HighlightSeverity.ERROR, failureHolder.single().severity)
         assertTrue(failureHolder.single().isFileLevelAnnotation)
@@ -191,7 +219,7 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
             com.intellij.openapi.progress.ProgressManager.getInstance().runProcess(object : Runnable {
                 override fun run() {
                     indicator.cancel()
-                    MagoLintRunner.lint("must-not-be-started", File("."), "", "Sample.php", "<?php")
+                    MagoLintRunner.run("must-not-be-started", File("."), "", "Sample.php", "<?php")
                 }
             }, indicator)
             fail("Cancellation must propagate")
@@ -209,10 +237,11 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         try {
             Files.writeString(path, diskText)
             Files.writeString(config, "[source]\nworkspace = \"src\"\n")
-            for (configPath in listOf("", config.toString())) {
-                val result = MagoLintRunner.lint(binary, directory.toFile(), configPath, path.toString(), "<?php function broken( {")
+            for (configPath in listOf("", config.toString())) for (tool in com.github.downace.stormfox.lint.MagoTool.entries) {
+                val result = MagoLintRunner.run(binary, directory.toFile(), configPath, path.toString(), "<?php function broken( {", tool)
                 assertTrue("Expected a valid JSON report, got $result", result is MagoLintRunner.Result.Success)
                 assertTrue((result as MagoLintRunner.Result.Success).diagnostics.isNotEmpty())
+                assertTrue(result.diagnostics.all { it.source == tool })
                 assertEquals(diskText, Files.readString(path))
             }
         } finally {
@@ -223,5 +252,5 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         }
     }
 
-    private fun snapshot(text: String) = MagoLintAnnotator.Snapshot(text, "Sample.php", File("."), "mago", "")
+    private fun snapshot(text: String) = MagoDiagnosticAnnotator.Snapshot(text, "Sample.php", File("."), "mago", "")
 }

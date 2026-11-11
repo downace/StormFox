@@ -13,7 +13,7 @@ import com.intellij.icons.AllIcons
 import com.intellij.psi.PsiElement
 import com.intellij.psi.PsiFile
 
-internal class MagoLintFixIntention(
+internal class MagoFixIntention(
     private val action: ModCommandAction,
     private val delegate: IntentionAction,
     private val label: String,

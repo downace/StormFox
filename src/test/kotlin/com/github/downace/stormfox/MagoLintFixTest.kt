@@ -1,6 +1,6 @@
 package com.github.downace.stormfox
 
-import com.github.downace.stormfox.lint.MagoLintReport
+import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
 import org.junit.Assert.*
 import org.junit.Test
 

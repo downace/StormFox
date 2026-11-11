@@ -1,10 +1,11 @@
 package com.github.downace.stormfox
 
-import com.github.downace.stormfox.lint.MagoApplyLintFixAction
+import com.github.downace.stormfox.lint.MagoApplyFixAction as MagoApplyLintFixAction
 import com.github.downace.stormfox.lint.MagoLintAnnotator
+import com.github.downace.stormfox.lint.MagoDiagnosticAnnotator
 import com.github.downace.stormfox.lint.MagoLintInspection
-import com.github.downace.stormfox.lint.MagoLintReport
-import com.github.downace.stormfox.lint.MagoLintRunner
+import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
+import com.github.downace.stormfox.lint.MagoDiagnosticRunner as MagoLintRunner
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.IntentionActionWithOptions
 import com.intellij.codeInsight.intention.PriorityAction
@@ -56,8 +57,8 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
                 }
             }
         } as AnnotationHolder
-        MagoLintAnnotator().apply(myFixture.file, MagoLintAnnotator.Report(
-            MagoLintAnnotator.Snapshot(source, path, File("."), "mago", ""),
+        MagoLintAnnotator().apply(myFixture.file, MagoDiagnosticAnnotator.Report(
+            MagoDiagnosticAnnotator.Snapshot(source, path, File("."), "mago", ""),
             MagoLintRunner.Result.Success(diagnostics)), holder)
         return captured
     }
@@ -72,7 +73,7 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
             "Fix all example problems in file"), options(current).map { it.text })
         assertTrue(options(current).all { options(it).isEmpty() })
         val global = captured.first().last().asIntention()
-        assertEquals("Mago Linter: Fix all problems in file (safe only)", global.text)
+        assertEquals("Mago: Fix all problems in file (safe only)", global.text)
         assertEquals(listOf("Fix all problems in file (including potentially unsafe)",
             "Fix all problems in file (including unsafe)"), options(global).map { it.text })
         assertEquals(PriorityAction.Priority.HIGH, (current as PriorityAction).priority)
@@ -90,7 +91,7 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
         assertEquals(listOf("Fix all a problems in file (potentially unsafe)"),
             options(captured.first().first().asIntention()).map { it.text })
         val global = captured.first().last().asIntention()
-        assertEquals("Mago Linter: Fix all problems in file (including potentially unsafe)", global.text)
+        assertEquals("Mago: Fix all problems in file (including potentially unsafe)", global.text)
         assertEquals("Fix all problems in file (including unsafe)", options(global).single().text)
         myFixture.launchAction(options(global).single())
         assertEquals("<?php echo 453;", myFixture.editor.document.text)
@@ -99,7 +100,7 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
     fun testSingleIssueStillOffersSameRuleFixAllChild() {
         val captured = actions(listOf("safe"))
         val current = captured.single().first().asIntention()
-        assertEquals("Mago Linter: Fix example", current.text)
+        assertEquals("Mago: Fix example", current.text)
         assertEquals(listOf("Fix all example problems in file"), options(current).map { it.text })
         assertEquals(PriorityAction.Priority.HIGH, (current as PriorityAction).priority)
         assertEquals(PriorityAction.Priority.NORMAL, (options(current).single() as PriorityAction).priority)

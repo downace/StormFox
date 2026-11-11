@@ -1,9 +1,9 @@
 package com.github.downace.stormfox
 
-import com.github.downace.stormfox.lint.MagoLintBatchFixes
-import com.github.downace.stormfox.lint.MagoLintReport
-import com.github.downace.stormfox.lint.MagoLintReport.Edit
-import com.github.downace.stormfox.lint.MagoLintReport.Safety
+import com.github.downace.stormfox.lint.MagoDiagnosticBatchFixes as MagoLintBatchFixes
+import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
+import com.github.downace.stormfox.lint.MagoDiagnosticReport.Edit
+import com.github.downace.stormfox.lint.MagoDiagnosticReport.Safety
 import com.intellij.openapi.util.TextRange
 import org.junit.Assert.*
 import org.junit.Test

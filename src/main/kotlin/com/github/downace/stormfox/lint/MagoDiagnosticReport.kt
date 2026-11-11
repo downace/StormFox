@@ -10,7 +10,7 @@ import java.io.File
 import java.io.StringReader
 import java.util.Locale
 
-internal object MagoLintReport {
+internal object MagoDiagnosticReport {
     data class Diagnostic(
         val range: TextRange,
         val message: String,
@@ -22,7 +22,10 @@ internal object MagoLintReport {
         val relatedLocations: List<RelatedLocation> = emptyList(),
         val snapshotHash: String = "",
         val fix: Fix? = null,
-    )
+        val source: MagoTool = MagoTool.LINT,
+    ) {
+        val summary: String get() = primaryMessage?.takeIf { it.isNotBlank() } ?: message
+    }
 
     enum class Safety { SAFE, POTENTIALLY_UNSAFE, UNSAFE }
     data class Edit(val start: Int, val end: Int, val text: String, val safety: Safety = Safety.SAFE)
@@ -36,21 +39,21 @@ internal object MagoLintReport {
         val filePath: String? = null,
     )
 
-    fun parse(json: String, text: String, logicalPath: String, workingDirectory: File?): List<Diagnostic> {
+    fun parse(json: String, text: String, logicalPath: String, workingDirectory: File?, source: MagoTool = MagoTool.LINT): List<Diagnostic> {
         JsonReader(StringReader(json)).use {
-            require(it.peek() == JsonToken.BEGIN_OBJECT) { "Expected a lint report object" }
+            require(it.peek() == JsonToken.BEGIN_OBJECT) { "Expected a diagnostic report object" }
             it.skipValue()
-            require(it.peek() == JsonToken.END_DOCUMENT) { "Trailing content in lint report" }
+            require(it.peek() == JsonToken.END_DOCUMENT) { "Trailing content in diagnostic report" }
         }
         val root = JsonParser.parseString(json).asJsonObject
-        val issues = requireNotNull(root.get("issues")) { "Missing lint issues" }
-        require(issues.isJsonArray) { "Expected lint issues array" }
+        val issues = requireNotNull(root.get("issues")) { "Missing diagnostic issues" }
+        require(issues.isJsonArray) { "Expected diagnostic issues array" }
         val offsets = byteOffsets(text)
         val expectedPath = normalizePath(logicalPath, workingDirectory)
         val snapshotHash = MagoRelatedNavigation.snapshotHash(text)
         val diagnostics = linkedSetOf<Diagnostic>()
         for (element in issues.asJsonArray) {
-            require(element.isJsonObject) { "Expected lint issue object" }
+            require(element.isJsonObject) { "Expected diagnostic issue object" }
             val issue = element.asJsonObject
             val message = issue.requiredString("message")
             val level = issue.requiredString("level")
@@ -105,7 +108,7 @@ internal object MagoLintReport {
                 if (offsets[start] < 0 || offsets[end] < 0) continue
                 val detail = annotation.optionalString("message")?.takeIf { it.isNotBlank() }
                 diagnostics.add(Diagnostic(TextRange(offsets[start], offsets[end]), message, code, level,
-                    detail, notes, help, relatedLocations, snapshotHash, fix))
+                    detail, notes, help, relatedLocations, snapshotHash, fix, source))
             }
         }
         return diagnostics.toList()
@@ -158,7 +161,7 @@ internal object MagoLintReport {
                 }
             }
             if (edits.isEmpty()) return null
-            Fix(MagoLintBatchFixes.stitch(text, edits), safety, edits.toList())
+            Fix(MagoDiagnosticBatchFixes.stitch(text, edits), safety, edits.toList())
         } catch (_: RuntimeException) {
             null
         } catch (_: java.nio.charset.CharacterCodingException) {

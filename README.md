@@ -18,17 +18,12 @@ so the **Reformat code** action uses Mago instead of the default formatter for P
 
 Turn on **Reformat code** in **Settings | Tools | Actions on Save**, so Mago is used to format PHP files on save.
 
-Enable **PHP | Quality tools | Mago validation** in **Settings | Editor | Inspections**
-to show Mago Linter findings in the editor.
+Enable corresponding inspection in **Settings | Editor | Inspections | PHP | Quality tools**
+to show Mago findings in the editor.
 
 ### Things to know
 
 * While the formatter is on, Mago replaces the IDE code style for PHP files: the
   **Settings | Editor | Code Style | PHP** page no longer affects them.
 * Only whole files are formatted. Mago cannot format a fragment, so selections and "changed lines
-  only" ranges are handled by the IDE's own formatter.
-
-### Upcoming Features
-
-* [Analyzer](https://mago.carthage.software/1.59.0/en/tools/analyzer/overview/) support.
-* [Guard](https://mago.carthage.software/1.59.0/en/tools/guard/overview/) support.
+   only" ranges are handled by the IDE's own formatter.

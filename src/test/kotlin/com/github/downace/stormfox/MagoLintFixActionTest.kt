@@ -1,11 +1,12 @@
 package com.github.downace.stormfox
 
-import com.github.downace.stormfox.lint.MagoApplyLintFixAction
-import com.github.downace.stormfox.lint.MagoLintReport
+import com.github.downace.stormfox.lint.MagoApplyFixAction as MagoApplyLintFixAction
+import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
 import com.github.downace.stormfox.lint.MagoRelatedNavigation
 import com.github.downace.stormfox.lint.MagoLintAnnotator
+import com.github.downace.stormfox.lint.MagoDiagnosticAnnotator
 import com.github.downace.stormfox.lint.MagoLintInspection
-import com.github.downace.stormfox.lint.MagoLintRunner
+import com.github.downace.stormfox.lint.MagoDiagnosticRunner as MagoLintRunner
 import com.intellij.lang.annotation.AnnotationBuilder
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.modcommand.ActionContext
@@ -49,8 +50,8 @@ class MagoLintFixActionTest : BasePlatformTestCase() {
 
     fun testRiskLabels() {
         myFixture.configureByText("Sample.php", "<?php echo 1;")
-        assertEquals("Mago Linter: Fix example (unsafe)", action(MagoLintReport.Safety.UNSAFE).getPresentation(context())!!.name())
-        assertEquals("Mago Linter: Fix example (potentially unsafe)", action(MagoLintReport.Safety.POTENTIALLY_UNSAFE).getPresentation(context())!!.name())
+        assertEquals("Mago: Fix example (unsafe)", action(MagoLintReport.Safety.UNSAFE).getPresentation(context())!!.name())
+        assertEquals("Mago: Fix example (potentially unsafe)", action(MagoLintReport.Safety.POTENTIALLY_UNSAFE).getPresentation(context())!!.name())
     }
 
     fun testAnnotationRegistersNativeFix() {
@@ -83,16 +84,16 @@ class MagoLintFixActionTest : BasePlatformTestCase() {
         val holder = Proxy.newProxyInstance(AnnotationHolder::class.java.classLoader, arrayOf(AnnotationHolder::class.java)) { _, method, _ ->
             if (method.name == "newAnnotation") builder else null
         } as AnnotationHolder
-        val snapshot = MagoLintAnnotator.Snapshot(text, path, File("."), "mago", "")
+        val snapshot = MagoDiagnosticAnnotator.Snapshot(text, path, File("."), "mago", "")
         MagoLintAnnotator().apply(myFixture.file,
-            MagoLintAnnotator.Report(snapshot, MagoLintRunner.Result.Success(listOf(diagnostic))), holder)
+            MagoDiagnosticAnnotator.Report(snapshot, MagoLintRunner.Result.Success(listOf(diagnostic))), holder)
         assertEquals(2, fixes.size)
         assertTrue(fixes.all { it is MagoApplyLintFixAction })
         val nativeHolder = com.intellij.codeInsight.daemon.impl.AnnotationHolderImpl(
             com.intellij.lang.annotation.AnnotationSession(myFixture.file), true)
         nativeHolder.runAnnotatorWithContext(myFixture.file) { _, target ->
             MagoLintAnnotator().apply(myFixture.file,
-                MagoLintAnnotator.Report(snapshot, MagoLintRunner.Result.Success(listOf(diagnostic))), target)
+                MagoDiagnosticAnnotator.Report(snapshot, MagoLintRunner.Result.Success(listOf(diagnostic))), target)
         }
         nativeHolder.assertAllAnnotationsCreated()
         val nativeFixes = nativeHolder.single().quickFixes!!

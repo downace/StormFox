@@ -42,6 +42,6 @@ class MagoInspectionResultsLifetime(private val application: Application) : Disp
         } catch (_: IllegalStateException) {
             return false
         }
-        return tools.containsKey(MagoLintInspection.SHORT_NAME)
+        return MagoTool.entries.any { tools.containsKey(it.shortName) }
     }
 }

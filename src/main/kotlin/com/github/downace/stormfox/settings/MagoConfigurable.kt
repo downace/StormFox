@@ -41,6 +41,8 @@ private const val MAX_STATUS_WIDTH = 400
 private const val ELLIPSIS = "…"
 private const val SECTION_TITLE = "Formatter"
 private const val LINTER_SECTION_TITLE = "Linter"
+private const val ANALYZER_SECTION_TITLE = "Analyzer"
+private const val GUARD_SECTION_TITLE = "Guard"
 private const val FORMATTER_HINT = "Mago replaces the IDE code style settings for PHP files."
 private const val FORMATTER_ON_SAVE_HINT =
     "Formatting on save is controlled by the IDE: turn on Reformat code in Settings | Tools | Actions on Save."
@@ -145,26 +147,11 @@ class MagoConfigurable(private val project: Project) : Configurable {
             )
         }
 
-        private val linterBlock: JComponent = JPanel(GridBagLayout()).apply {
-            add(
-                sectionRule(LINTER_SECTION_TITLE),
-                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, JBUI.scale(SECTION_GAP), 0)),
-            )
-            add(
-                PhpInspectionsUtil.createPanelWithSettingsLink(
-                    "Mago inspection",
-                    ErrorsConfigurable::class.java,
-                    { targetProject ->
-                        ConfigurableExtensionPointUtil.createProjectConfigurableForProvider(
-                            targetProject,
-                            ErrorsConfigurableProvider::class.java,
-                        ) as ErrorsConfigurable
-                    },
-                    { it.selectInspectionTool("MagoLint") },
-                ),
-                cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL),
-            )
-        }
+        private val linterBlock = inspectionBlock(LINTER_SECTION_TITLE, "MagoLint")
+
+        private val analyzerBlock = inspectionBlock(ANALYZER_SECTION_TITLE, "MagoAnalyze")
+
+        private val guardBlock = inspectionBlock(GUARD_SECTION_TITLE, "MagoGuard")
 
         /**
          * The content is put into a BorderLayout.NORTH: a GridBagLayout would share the extra height
@@ -176,6 +163,8 @@ class MagoConfigurable(private val project: Project) : Configurable {
                     add(generalBlock, cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
                     add(formatterBlock, cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
                     add(linterBlock, cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
+                    add(analyzerBlock, cell(gridx = 0, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
+                    add(guardBlock, cell(gridx = 0, gridy = 4, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
                 },
                 BorderLayout.NORTH,
             )
@@ -228,6 +217,27 @@ class MagoConfigurable(private val project: Project) : Configurable {
                 add(titleLabel, cell(gridx = 0, gridy = 0, anchor = GridBagConstraints.WEST, insets = JBUI.insets(0, 0, 0, JBUI.scale(8))))
                 add(line, cell(gridx = 1, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.CENTER))
             }
+        }
+
+        private fun inspectionBlock(title: String, inspectionTool: String): JComponent = JPanel(GridBagLayout()).apply {
+            add(
+                sectionRule(title),
+                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, JBUI.scale(SECTION_GAP), 0)),
+            )
+            add(
+                PhpInspectionsUtil.createPanelWithSettingsLink(
+                    "Mago $title inspection",
+                    ErrorsConfigurable::class.java,
+                    { targetProject ->
+                        ConfigurableExtensionPointUtil.createProjectConfigurableForProvider(
+                            targetProject,
+                            ErrorsConfigurableProvider::class.java,
+                        ) as ErrorsConfigurable
+                    },
+                    { it.selectInspectionTool(inspectionTool) },
+                ),
+                cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL),
+            )
         }
 
         private fun cell(

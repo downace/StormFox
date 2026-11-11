@@ -3,27 +3,25 @@ package com.github.downace.stormfox.lint
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 
-internal object MagoLintTooltip {
+internal object MagoDiagnosticTooltip {
     const val PREFIX = "stormfox-mago-details:"
-    private const val DOCUMENTATION = "https://mago.carthage.software/latest/en/tools/linter/rules/#"
 
-    fun compact(diagnostic: MagoLintReport.Diagnostic): String {
-        val message = diagnostic.primaryMessage?.takeIf { it.isNotBlank() } ?: diagnostic.message
+    fun compact(diagnostic: MagoDiagnosticReport.Diagnostic): String {
+        val message = diagnostic.summary
         val code = diagnostic.code?.takeIf { it.isNotBlank() }?.let { " <code>${renderText(it)}</code>" }.orEmpty()
         val extra = expanded(diagnostic)
         val details = if (extra == null) "" else " &nbsp; ${detailsLink(extra)}"
-        return "<html><b>Mago Linter</b>: ${renderText(message)}$code$details</html>"
+        return "<html><b>Mago</b>: ${renderText(message)}$code$details</html>"
     }
 
-    fun expanded(diagnostic: MagoLintReport.Diagnostic): String? = buildString {
+    fun expanded(diagnostic: MagoDiagnosticReport.Diagnostic): String? = buildString {
         var hasContent = false
         fun section(content: String) {
             append(content)
             hasContent = true
         }
         diagnostic.message.takeIf {
-            it.isNotBlank() && diagnostic.primaryMessage?.isNotBlank() == true &&
-                it.trim() != diagnostic.primaryMessage.trim()
+            it.isNotBlank() && it.trim() != diagnostic.summary.trim()
         }?.let {
             section("<p>${renderText(it)}</p>")
         }
@@ -37,7 +35,9 @@ internal object MagoLintTooltip {
             section("<p><icon src=\"com.intellij.icons.AllIcons.General.Information\" alt=\"Notes\"/>&nbsp;&nbsp;$it</p>")
         }
         diagnostic.code?.takeIf { it.isNotBlank() }?.let {
-            section("<p><a href=\"$DOCUMENTATION${encodeFragment(it)}\">Rule documentation</a></p>")
+            val source = diagnostic.source
+            val url = source.documentationUrl + if (source.documentationCodeAnchor) encodeFragment(it) else ""
+            section("<p><a href=\"$url\">${source.documentationLabel}</a></p>")
         }
         if (!hasContent) return null
     }.let { "<html><body>$it</body></html>" }
