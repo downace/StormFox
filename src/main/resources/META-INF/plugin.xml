@@ -18,11 +18,10 @@
         <li>Open <b>Settings | PHP | Quality Tools | Mago</b> and set <b>Mago executable</b> to the path of the binary.</li>
     </ol>
     <ul>
-        <li><b>Formatting:</b> enable <b>Use Mago formatter</b>, then use <b>Reformat code</b> (<code>Ctrl+Alt+L</code>).</li>
-        <li><b>Formatting on save:</b> also enable <b>Reformat code</b> in <b>Settings | Tools | Actions on Save</b>.</li>
-        <li><b>Linting:</b> in <b>Settings | Editor | Inspections</b> enable <b>PHP | Quality tools | Mago Linter validation</b>.</li>
-        <li><b>Analysis:</b> in <b>Settings | Editor | Inspections</b> enable <b>PHP | Quality tools | Mago Analyzer validation</b>.</li>
-        <li><b>Architecture:</b> in <b>Settings | Editor | Inspections</b> enable <b>PHP | Quality tools | Mago Guard validation</b>.</li>
+        <li><b>Formatter:</b> enable <b>Use Mago formatter</b>, then use <b>Reformat code</b> (<code>Ctrl+Alt+L</code>). To format files on save, enable <b>Reformat code</b> in <b>Settings | Tools | Actions on Save</b>.</li>
+        <li><b>Linter:</b> in <b>Settings | Editor | Inspections</b> enable <b>PHP | Quality tools | Mago Linter validation</b>.</li>
+        <li><b>Analyzer:</b> in <b>Settings | Editor | Inspections</b> enable <b>PHP | Quality tools | Mago Analyzer validation</b>.</li>
+        <li><b>Guard:</b> in <b>Settings | Editor | Inspections</b> enable <b>PHP | Quality tools | Mago Guard validation</b>.</li>
     </ul>
     ]]></description>
 
