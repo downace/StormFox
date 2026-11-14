@@ -3,7 +3,6 @@ package com.github.downace.stormfox.lint
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.application.ReadAction
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.editor.EditorFactory
 import com.intellij.openapi.editor.event.DocumentEvent
@@ -68,13 +67,12 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
         }
     }, { file, tool, snapshot ->
         ApplicationManager.getApplication().invokeLater {
-            if (!disposed && !project.isDisposed) ReadAction.run<RuntimeException> {
-                if (!file.isValid || !state.isCurrent(file, tool, snapshot) || epoch != snapshot.generation) return@run
-                val psi = PsiManager.getInstance(project).findFile(file) ?: return@run
-                val document = PsiDocumentManager.getInstance(project).getDocument(psi) ?: return@run
-                if (document.modificationStamp != snapshot.revision || MagoDiagnosticAnnotator.inspection(psi, tool) == null) return@run
-                DaemonCodeAnalyzer.getInstance(project).restart(psi)
-            }
+            if (disposed || project.isDisposed) return@invokeLater
+            if (!file.isValid || !state.isCurrent(file, tool, snapshot) || epoch != snapshot.generation) return@invokeLater
+            val psi = PsiManager.getInstance(project).findFile(file) ?: return@invokeLater
+            val document = PsiDocumentManager.getInstance(project).getDocument(psi) ?: return@invokeLater
+            if (document.modificationStamp != snapshot.revision || MagoDiagnosticAnnotator.inspection(psi, tool) == null) return@invokeLater
+            DaemonCodeAnalyzer.getInstance(project).restart(psi)
         }
     })
 
@@ -124,10 +122,9 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
         state.invalidateAll()
         if (files.isEmpty()) return
         ApplicationManager.getApplication().invokeLater {
-            if (!disposed && !project.isDisposed) ReadAction.run<RuntimeException> {
-                files.filter { it.isValid }.forEach { file ->
-                    PsiManager.getInstance(project).findFile(file)?.let { DaemonCodeAnalyzer.getInstance(project).restart(it) }
-                }
+            if (disposed || project.isDisposed) return@invokeLater
+            files.filter { it.isValid }.forEach { file ->
+                PsiManager.getInstance(project).findFile(file)?.let { DaemonCodeAnalyzer.getInstance(project).restart(it) }
             }
         }
     }
