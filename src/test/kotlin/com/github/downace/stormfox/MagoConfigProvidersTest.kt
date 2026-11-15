@@ -57,7 +57,7 @@ class MagoConfigProvidersTest : BasePlatformTestCase() {
     }
 
     fun testSchemaUsesOfficialRemoteSource() {
-        val provider = MagoJsonSchemaProviderFactory().getProviders(project).single()
+        val provider = MagoJsonSchemaProvider(project, version = { null })
         assertEquals("Mago", provider.name)
         assertEquals("https://mago.carthage.software/latest/schema.json", provider.remoteSource)
         assertEquals(SchemaType.remoteSchema, provider.schemaType)
@@ -69,7 +69,7 @@ class MagoConfigProvidersTest : BasePlatformTestCase() {
         val release = CountDownLatch(1)
         val requests = AtomicInteger()
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
-        server.createContext("/schema.json") { exchange ->
+        server.createContext("/latest/schema.json") { exchange ->
             requests.incrementAndGet()
             requested.countDown()
             if (release.await(20, TimeUnit.SECONDS)) {
@@ -81,7 +81,7 @@ class MagoConfigProvidersTest : BasePlatformTestCase() {
         }
         server.start()
         try {
-            val provider = MagoJsonSchemaProvider(project, "http://127.0.0.1:${server.address.port}/schema.json")
+            val provider = MagoJsonSchemaProvider(project, "http://127.0.0.1:${server.address.port}", { null })
             assertNull(provider.schemaFile)
             assertTrue(requested.await(10, TimeUnit.SECONDS))
             repeat(5) { assertNull(provider.schemaFile) }
@@ -99,6 +99,100 @@ class MagoConfigProvidersTest : BasePlatformTestCase() {
             assertEquals(1, requests.get())
         }
         finally {
+            release.countDown()
+            server.stop(0)
+        }
+    }
+
+    fun testVersionedSchemasFallbackAndBoundedFailures() {
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        val requests = java.util.concurrent.ConcurrentHashMap<String, AtomicInteger>()
+        server.createContext("/") { exchange ->
+            val path = exchange.requestURI.path
+            requests.computeIfAbsent(path) { AtomicInteger() }.incrementAndGet()
+            val rule = when (path) {
+                "/1.59.0/schema.json" -> "old-rule"
+                "/1.60.0/schema.json" -> "no-unused-return-value"
+                "/latest/schema.json" -> "latest-rule"
+                else -> null
+            }
+            if (rule == null) exchange.sendResponseHeaders(404, -1)
+            else {
+                val bytes = """{"type":"object","properties":{"$rule":{"type":"boolean"}}}""".toByteArray()
+                exchange.sendResponseHeaders(200, bytes.size.toLong())
+                exchange.responseBody.use { it.write(bytes) }
+            }
+            exchange.close()
+        }
+        server.start()
+        try {
+            val base = "http://127.0.0.1:${server.address.port}"
+            var version: String? = "1.59.0"
+            val provider = MagoJsonSchemaProvider(project, base, { version }, {})
+            fun waitFile(): VirtualFile {
+                var file: VirtualFile? = null
+                PlatformTestUtil.waitWithEventsDispatching("Schema download", {
+                    file = provider.schemaFile
+                    file != null
+                }, 20)
+                return file!!
+            }
+            assertEquals("$base/1.59.0/schema.json", provider.remoteSource)
+            assertTrue(String(waitFile().contentsToByteArray()).contains("old-rule"))
+            version = "1.60.0"
+            assertEquals("$base/1.60.0/schema.json", provider.remoteSource)
+            assertTrue(String(waitFile().contentsToByteArray()).contains("no-unused-return-value"))
+            version = "1.61.0"
+            assertEquals("$base/1.61.0/schema.json", provider.remoteSource)
+            assertTrue(String(waitFile().contentsToByteArray()).contains("latest-rule"))
+            assertEquals("$base/latest/schema.json", provider.remoteSource)
+            version = null
+            assertEquals("$base/latest/schema.json", provider.remoteSource)
+            assertTrue(String(waitFile().contentsToByteArray()).contains("latest-rule"))
+            repeat(5) { assertNotNull(provider.schemaFile) }
+            for (path in listOf("/1.59.0/schema.json", "/1.60.0/schema.json", "/1.61.0/schema.json", "/latest/schema.json"))
+                assertEquals(path, 1, requests[path]?.get())
+        } finally {
+            server.stop(0)
+        }
+    }
+
+    fun testPendingOldVersionCannotSelectFallbackAndLatestFailureDoesNotSpin() {
+        val requested = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val requests = AtomicInteger()
+        val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+        server.createContext("/") { exchange ->
+            requests.incrementAndGet()
+            if (exchange.requestURI.path == "/1.59.0/schema.json") {
+                requested.countDown()
+                release.await(20, TimeUnit.SECONDS)
+            }
+            exchange.sendResponseHeaders(404, -1)
+            exchange.close()
+        }
+        server.start()
+        try {
+            val base = "http://127.0.0.1:${server.address.port}"
+            var version: String? = "1.59.0"
+            val changes = AtomicInteger()
+            val provider = MagoJsonSchemaProvider(project, base, { version }, { changes.incrementAndGet() })
+            assertNull(provider.schemaFile)
+            assertTrue(requested.await(10, TimeUnit.SECONDS))
+            version = "1.60.1"
+            release.countDown()
+            assertEquals("$base/1.60.1/schema.json", provider.remoteSource)
+            PlatformTestUtil.waitWithEventsDispatching("Version fallback", {
+                provider.schemaFile
+                provider.remoteSource == "$base/latest/schema.json"
+            }, 20)
+            PlatformTestUtil.waitWithEventsDispatching("Latest failure", {
+                provider.schemaFile
+                changes.get() >= 2
+            }, 20)
+            repeat(10) { assertNull(provider.schemaFile) }
+            assertEquals(3, requests.get())
+        } finally {
             release.countDown()
             server.stop(0)
         }

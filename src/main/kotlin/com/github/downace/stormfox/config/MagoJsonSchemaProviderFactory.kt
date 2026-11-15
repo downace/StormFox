@@ -1,5 +1,10 @@
 package com.github.downace.stormfox.config
 
+import com.github.downace.stormfox.MagoVersionListener
+import com.github.downace.stormfox.MagoVersionService
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.application.EDT
+import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
@@ -8,41 +13,91 @@ import com.jetbrains.jsonSchema.extension.JsonSchemaFileProvider
 import com.jetbrains.jsonSchema.extension.JsonSchemaProviderFactory
 import com.jetbrains.jsonSchema.extension.SchemaType
 import com.jetbrains.jsonSchema.ide.JsonSchemaService
-import java.util.concurrent.atomic.AtomicBoolean
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MagoJsonSchemaProviderFactory : JsonSchemaProviderFactory {
-    override fun getProviders(project: Project): List<JsonSchemaFileProvider> = listOf(MagoJsonSchemaProvider(project))
+    override fun getProviders(project: Project): List<JsonSchemaFileProvider> =
+        listOf(project.getService(MagoSchemaProjectService::class.java).provider())
+}
+
+@Service(Service.Level.PROJECT)
+internal class MagoSchemaProjectService(private val project: Project, private val scope: CoroutineScope) {
+    private var instance: MagoJsonSchemaProvider? = null
+
+    @Synchronized
+    fun provider(): MagoJsonSchemaProvider {
+        instance?.let { return it }
+        ApplicationManager.getApplication().messageBus.connect(scope).subscribe(
+            MagoVersionListener.TOPIC,
+            object : MagoVersionListener {
+                override fun versionChanged() = resetSchema()
+            },
+        )
+        return MagoJsonSchemaProvider(project, onChange = ::resetSchema).also { instance = it }
+    }
+
+    private fun resetSchema() {
+        scope.launch(Dispatchers.EDT) {
+            if (!project.isDisposed) JsonSchemaService.Impl.get(project).reset()
+        }
+    }
 }
 
 class MagoJsonSchemaProvider internal constructor(
     private val project: Project,
-    private val schemaUrl: String = SCHEMA_URL,
+    private val baseUrl: String = "https://mago.carthage.software",
+    private val version: () -> String? = { MagoVersionService.getInstance().cachedVersion()?.toString() },
+    private val onChange: () -> Unit = {
+        if (!project.isDisposed) JsonSchemaService.Impl.get(project).reset()
+    },
 ) : JsonSchemaFileProvider {
-    private val downloadRequested = AtomicBoolean()
+    private enum class Download { REQUESTED, SUCCEEDED, FAILED }
+    private val downloads = mutableMapOf<String, Download>()
+
     override fun isAvailable(file: VirtualFile): Boolean = MagoConfigFiles.matches(file)
-
     override fun getName(): String = "Mago"
-
     override fun getSchemaType(): SchemaType = SchemaType.remoteSchema
 
-    override fun getRemoteSource(): String = schemaUrl
+    private fun versionUrl(): String = "$baseUrl/${version() ?: "latest"}/schema.json"
+    private val latestUrl: String get() = "$baseUrl/latest/schema.json"
 
-    override fun getSchemaFile(): VirtualFile? {
-        val remote = VirtualFileManager.getInstance().findFileByUrl(schemaUrl) as? HttpVirtualFile ?: return null
-        remote.fileInfo?.localFile?.takeIf { it.isValid && it.length > 0 }?.let { return it }
-        if (downloadRequested.compareAndSet(false, true)) {
-            remote.refresh(true, false) {
-                if (remote.fileInfo?.localFile?.length?.let { it > 0 } != true) {
-                    downloadRequested.set(false)
-                } else if (!project.isDisposed) {
-                    JsonSchemaService.Impl.get(project).reset()
-                }
-            }
-        }
-        return null
+    @Synchronized
+    private fun selectedUrl(): String {
+        val preferred = versionUrl()
+        return if (downloads[preferred] == Download.FAILED) latestUrl else preferred
     }
 
-    private companion object {
-        const val SCHEMA_URL = "https://mago.carthage.software/latest/schema.json"
+    override fun getRemoteSource(): String = selectedUrl()
+
+    override fun getSchemaFile(): VirtualFile? {
+        val url = selectedUrl()
+        val remote = VirtualFileManager.getInstance().findFileByUrl(url) as? HttpVirtualFile ?: return null
+        synchronized(this) {
+            if (downloads[url] == Download.FAILED) return null
+            remote.fileInfo?.localFile?.takeIf { it.isValid && it.length > 0 }?.let {
+                downloads[url] = Download.SUCCEEDED
+                return it
+            }
+            if (downloads.containsKey(url)) return null
+            downloads[url] = Download.REQUESTED
+        }
+        remote.refresh(true, false) {
+            val changed = synchronized(this) {
+                // Do not let an obsolete request select a fallback for the current version.
+                if (selectedUrl() != url) {
+                    downloads.remove(url)
+                    false
+                } else {
+                    val local = remote.fileInfo?.localFile
+                    downloads[url] = if (local != null && local.isValid && local.length > 0)
+                        Download.SUCCEEDED else Download.FAILED
+                    true
+                }
+            }
+            if (changed && !project.isDisposed) onChange()
+        }
+        return null
     }
 }
