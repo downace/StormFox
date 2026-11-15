@@ -23,6 +23,27 @@ import java.lang.reflect.Proxy
 import java.nio.file.Files
 
 class MagoLintInspectionTest : BasePlatformTestCase() {
+    fun testRetainedAnnotationsHaveNoActions() {
+        val text = "<?php echo 1;"
+        myFixture.configureByText("Sample.php", text)
+        myFixture.enableInspections(MagoLintInspection())
+        val calls = mutableListOf<String>()
+        val builderType = com.intellij.lang.annotation.AnnotationBuilder::class.java
+        val builder = Proxy.newProxyInstance(builderType.classLoader, arrayOf(builderType)) { proxy, method, _ ->
+            calls += method.name
+            if (method.returnType == builderType) proxy else null
+        }
+        val holder = Proxy.newProxyInstance(AnnotationHolder::class.java.classLoader, arrayOf(AnnotationHolder::class.java)) { _, method, _ ->
+            calls += method.name
+            if (method.name == "newAnnotation") builder else null
+        } as AnnotationHolder
+        val diagnostic = MagoLintReport.Diagnostic(TextRange(6, 10), "Avoid echo", "test", "Warning",
+            fix = MagoLintReport.Fix(text, MagoLintReport.Safety.SAFE))
+        MagoLintAnnotator().apply(myFixture.file,
+            MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(listOf(diagnostic)), retained = true), holder)
+        assertTrue(calls.containsAll(listOf("newAnnotation", "range", "tooltip", "create")))
+        assertFalse(calls.contains("newFix"))
+    }
     fun testAllToolsUseOneConciseSummaryInAnnotationsAndProblems() {
         val text = "<?php echo 1;"
         myFixture.configureByText("Sample.php", text)

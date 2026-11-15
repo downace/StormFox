@@ -35,7 +35,9 @@ open class MagoDiagnosticAnnotator(
         val environment: Map<String, String> = System.getenv(),
     )
 
-    class Report internal constructor(val snapshot: Snapshot, internal val result: MagoDiagnosticRunner.Result)
+    class Report internal constructor(val snapshot: Snapshot, internal val result: MagoDiagnosticRunner.Result,
+                                      internal val retained: Boolean = false,
+                                      internal val view: MagoDiagnosticState.View? = null)
 
     override fun getPairedBatchInspectionShortName(): String = source.shortName
 
@@ -53,30 +55,47 @@ open class MagoDiagnosticAnnotator(
     }
 
     override fun doAnnotate(collectedInfo: Snapshot): Report? {
-        val result = if (batch) MagoDiagnosticRunner.run(collectedInfo.binary, collectedInfo.workingDirectory,
-            collectedInfo.configPath, collectedInfo.logicalPath, collectedInfo.text, source)
+        if (batch) return Report(collectedInfo, MagoDiagnosticRunner.run(collectedInfo.binary, collectedInfo.workingDirectory,
+            collectedInfo.configPath, collectedInfo.logicalPath, collectedInfo.text, source))
         else {
             val project = collectedInfo.project ?: return null
-            val file = collectedInfo.file ?: return null
-            project.getService(MagoDiagnosticService::class.java).state.request(file, source, collectedInfo.workerSnapshot()) ?: return null
+            val service = project.getService(MagoDiagnosticService::class.java)
+            return service.withCurrentReport(collectedInfo, source) { it }
         }
-        return Report(collectedInfo, result)
     }
 
-    private fun Snapshot.workerSnapshot() = MagoSnapshot(revision, text, logicalPath, workingDirectory, binary, configPath, environment, generation)
-
     override fun apply(file: PsiFile, annotationResult: Report, holder: AnnotationHolder) {
-        val currentText = PsiDocumentManager.getInstance(file.project).getDocument(file)?.text ?: file.text
-        if (!isCurrent(annotationResult.snapshot, currentText)) return
+        val input = annotationResult.snapshot
+        if (!batch && input.project != null) {
+            if (input.file != file.virtualFile || input.project !== file.project) return
+            input.project.getService(MagoDiagnosticService::class.java).withCurrentReport(input, source) {
+                render(file, it, holder)
+            }
+            return
+        }
+        render(file, annotationResult, holder)
+    }
+
+    private fun render(file: PsiFile, annotationResult: Report, holder: AnnotationHolder) {
         val snapshot = annotationResult.snapshot
+        val service = snapshot.project?.getService(MagoDiagnosticService::class.java)
+        val details = "file=${snapshot.logicalPath} tool=$source revision=${snapshot.revision} generation=${snapshot.generation} slot=${annotationResult.view?.slotId ?: "-"} retained=${annotationResult.retained}"
+        fun skip(reason: String) { service?.trace("apply-skip $details reason=$reason") }
+        val currentText = PsiDocumentManager.getInstance(file.project).getDocument(file)?.text ?: file.text
+        if (!isCurrent(snapshot, currentText)) { skip("text"); return }
         val document = PsiDocumentManager.getInstance(file.project).getDocument(file)
-        if (snapshot.revision >= 0 && document?.modificationStamp != snapshot.revision) return
+        if (snapshot.revision >= 0 && document?.modificationStamp != snapshot.revision) { skip("revision"); return }
         if (snapshot.project != null) {
             val settings = MagoSettings.getInstance().state
             if (snapshot.binary != settings.magoPath.ifBlank { "mago" } || snapshot.configPath != settings.configPath ||
-                snapshot.generation != file.project.getService(MagoDiagnosticService::class.java).epoch) return
+                snapshot.generation != file.project.getService(MagoDiagnosticService::class.java).epoch) { skip("settings-or-generation"); return }
         }
-        val (inspection, severity, key) = inspection(file, source, batchProfile) ?: return
+        val (inspection, severity, key) = inspection(file, source, batchProfile) ?: run { skip("inspection-disabled"); return }
+        val status = when (val result = annotationResult.result) {
+            is MagoDiagnosticRunner.Result.Success -> "success count=${result.diagnostics.size}"
+            is MagoDiagnosticRunner.Result.Failure -> "failure"
+        }
+        service?.trace("apply $details $status")
         fun AnnotationBuilder.registerFix(action: ModCommandAction) {
             newFix(action).key(key).registerFix()
         }
@@ -84,6 +103,14 @@ open class MagoDiagnosticAnnotator(
         when (val result = annotationResult.result) {
             is MagoDiagnosticRunner.Result.Failure -> annotation(result.message).fileLevel().create()
             is MagoDiagnosticRunner.Result.Success -> {
+                if (annotationResult.retained) {
+                    result.diagnostics.forEach {
+                        val message = it.summary + (it.code?.let { code -> " [$code]" } ?: "")
+                        annotation(message, inspection.severityFor(it.level, severity, file.project))
+                            .range(it.range).tooltip(MagoDiagnosticTooltip.compact(it)).create()
+                    }
+                    return
+                }
                 val batches = MagoDiagnosticBatchFixes.variants(currentText, result.diagnostics)
                 val snapshotHash = MagoRelatedNavigation.snapshotHash(currentText)
                 val ruleBatches = result.diagnostics.groupBy { it.code }.mapValues { (_, diagnostics) ->
