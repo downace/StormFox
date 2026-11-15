@@ -379,6 +379,9 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
         val settings = MagoSettings.getInstance().state
         val oldConfig = settings.configPath
         val oldBinary = settings.magoPath
+        // This fixture tests VFS invalidation, not executable validation; its binary is plain text.
+        val onPathChanged = settings.onPathChanged
+        settings.onPathChanged = null
         try {
             Files.writeString(targetPath, "<?php echo 1;")
             Files.writeString(dependencyPath, "original")
@@ -398,6 +401,7 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
         } finally {
             settings.configPath = oldConfig
             settings.magoPath = oldBinary
+            settings.onPathChanged = onPathChanged
             Files.walk(directory).use { paths ->
                 paths.sorted(Comparator.reverseOrder()).forEach { Files.deleteIfExists(it) }
             }

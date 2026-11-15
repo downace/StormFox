@@ -5,6 +5,10 @@
 
     <description><![CDATA[
     <p><a href="https://mago.carthage.software/">Mago</a> integration for PHP: format code, lint style and code quality, and analyze types and logic using your project's Mago configuration.</p>
+    <p>
+        Tested with Mago 1.59.0–1.60.1.
+        Feel free to <a href="https://github.com/downace/StormFox/issues">report issues</a> if you encounter errors or need more features.
+    </p>
     <h3>Features</h3>
     <ul>
         <li><b><a href="https://mago.carthage.software/latest/en/tools/formatter/overview/">Formatter</a>:</b> format PHP files with Reformat code or automatically on save.</li>
@@ -41,6 +45,7 @@
     <depends>com.intellij.modules.json</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <postStartupActivity implementation="com.github.downace.stormfox.MagoVersionProjectStartup"/>
         <codeInsight.linkHandler prefix="stormfox-mago-details:" handlerClass="com.github.downace.stormfox.lint.MagoDiagnosticTooltipLinkHandler"/>
         <localInspection language="PHP" shortName="MagoLint" displayName="Mago Linter validation"
                          groupPath="PHP" groupName="Quality tools" enabledByDefault="false" level="WARNING"

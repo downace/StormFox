@@ -112,7 +112,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
         private val generalBlock: JComponent = JPanel(GridBagLayout()).apply {
             add(JBLabel("Mago executable:"), cell(gridx = 0, gridy = 0, anchor = GridBagConstraints.WEST))
             add(binaryRow.rowComponent, cell(gridx = 1, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH))
-            add(binaryRow.status.label, cell(gridx = 1, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)))
+            add(binaryRow.status.component, cell(gridx = 1, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)))
 
             add(
                 JBLabel("Default configuration file:"),
@@ -123,7 +123,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
                 cell(gridx = 1, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)),
             )
             add(
-                configRow.status.label,
+                configRow.status.component,
                 cell(gridx = 1, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)),
             )
         }
@@ -315,7 +315,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
                         status.show(StatusLine.Kind.STALE, NOT_VALIDATED_TEXT)
                     } else {
                         when (result) {
-                            is MagoValidation.Result.Success -> status.show(StatusLine.Kind.SUCCESS, result.message)
+                            is MagoValidation.Result.Success -> status.showSuccess(result.message, result.warning)
                             is MagoValidation.Result.Failure -> status.show(StatusLine.Kind.ERROR, result.message)
                         }
                     }
@@ -330,6 +330,16 @@ class MagoConfigurable(private val project: Project) : Configurable {
         enum class Kind { EMPTY, CHECKING, SUCCESS, ERROR, STALE }
 
         val label = StatusLabel()
+        private val warningIcon = JBLabel(AllIcons.General.BalloonWarning).apply {
+            isVisible = false
+            toolTipText = null
+            accessibleContext.accessibleName = "Version compatibility warning"
+        }
+        private val content = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, JBUI.scale(4), 0)).apply {
+            isOpaque = false
+            add(label)
+            add(warningIcon)
+        }
 
         var kind: Kind = Kind.EMPTY
             private set
@@ -342,7 +352,22 @@ class MagoConfigurable(private val project: Project) : Configurable {
         fun show(kind: Kind, message: String) {
             this.kind = kind
             label.setMessage(message)
+            setWarning(null)
             label.foreground = if (kind == Kind.ERROR) ERROR_TEXT_COLOR else SECONDARY_TEXT_COLOR
+        }
+
+        fun showSuccess(message: String, warning: String?) {
+            this.kind = Kind.SUCCESS
+            label.setMessage(message)
+            label.foreground = SECONDARY_TEXT_COLOR
+            setWarning(warning)
+        }
+
+        private fun setWarning(warning: String?) {
+            warningIcon.isVisible = !warning.isNullOrBlank()
+            warningIcon.toolTipText = warning
+            warningIcon.accessibleContext.accessibleDescription = warning
+            content.revalidate()
         }
 
         fun markStale() {
@@ -350,6 +375,8 @@ class MagoConfigurable(private val project: Project) : Configurable {
                 show(Kind.STALE, NOT_VALIDATED_TEXT)
             }
         }
+
+        val component: JComponent get() = content
     }
 
     /**

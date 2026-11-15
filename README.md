@@ -7,7 +7,11 @@
 
 ![PHP Mago inspections and Quick Fixes](docs/marketplace/screenshots/ide-3.gif)
 
-Requires PhpStorm 2024.3 or newer.
+Works with PhpStorm 2024.3+ and IntelliJ IDEA 2024.3+.
+
+Tested with Mago 1.59.0–1.60.1.
+
+Feel free to [report issues](https://github.com/downace/StormFox/issues) if you encounter errors or need more features.
 
 ## Setup
 

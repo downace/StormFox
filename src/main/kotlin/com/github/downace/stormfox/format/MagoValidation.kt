@@ -1,6 +1,8 @@
 package com.github.downace.stormfox.format
 
 import com.github.downace.stormfox.resolveMagoExecutable
+import com.github.downace.stormfox.MagoVersion
+import com.github.downace.stormfox.MagoVersionService
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -18,16 +20,30 @@ internal object MagoValidation {
     private const val TIMEOUT_MS = 15_000
 
     sealed interface Result {
-        data class Success(val message: String) : Result
+        data class Success(val message: String, val warning: String? = null) : Result
         data class Failure(val message: String) : Result
     }
 
     fun checkBinary(binaryPath: String): Result {
+        val service = MagoVersionService.getInstance()
+        val token = service.beginValidation(binaryPath)
+        val result = checkBinaryUncached(binaryPath)
+        service.finish(token, binaryPath, result)
+        return result
+    }
+
+    internal fun checkBinaryUncached(binaryPath: String): Result {
         if (binaryPath.isBlank()) {
             return Result.Failure("The path to the mago binary is not set")
         }
         return when (val outcome = run(listOf(resolveMagoExecutable(binaryPath), "--version"))) {
-            is Result.Success -> Result.Success(outcome.message.trim().ifEmpty { "mago is available" })
+            is Result.Success -> {
+                val message = outcome.message.trim().ifEmpty { "mago is available" }
+                val version = MagoVersion.parse(message)
+                val warning = if (version != null && !version.isTested)
+                    "Mago $version is outside the tested range 1.59.0–1.60.1. Other versions may work, but could cause errors." else null
+                Result.Success(message, warning)
+            }
             is Result.Failure -> outcome
         }
     }
