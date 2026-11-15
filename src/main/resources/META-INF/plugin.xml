@@ -15,6 +15,10 @@
     <h3>Getting started</h3>
     <ol>
         <li><a href="https://mago.carthage.software/latest/en/guide/installation/">Install Mago</a> and make sure it runs on your machine.</li>
+        <li>
+            Install StormFox plugin from the <a href="https://github.com/downace/StormFox/releases">releases page</a>, <a href="https://plugins.jetbrains.com/plugin/35857">JetBrains Marketplace</a>, or directly in the IDE via <strong>Settings | Plugins | Marketplace</strong> (search for <strong>StormFox</strong> or <strong>Mago</strong>).
+            <blockquote><i>The marketplace version may lag behind GitHub releases</i></blockquote>
+        </li>
         <li>Open <b>Settings | PHP | Quality Tools | Mago</b> and set <b>Mago executable</b> to the path of the binary.</li>
     </ol>
     <ul>

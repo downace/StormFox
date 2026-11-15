@@ -13,6 +13,7 @@ Requires PhpStorm 2024.3 or newer.
 
 1. Install [Mago](https://mago.carthage.software/) and make sure it runs on your machine.
 2. Install StormFox plugin from the [releases page](https://github.com/downace/StormFox/releases), [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35857), or directly in the IDE via **Settings | Plugins | Marketplace** (search for **StormFox** or **Mago**).
+   > The marketplace version may lag behind GitHub releases
 3. Open **Settings | PHP | Quality Tools | Mago** and set **Mago executable** to the binary.
 
 ## Usage
