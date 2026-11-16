@@ -1,6 +1,7 @@
 package com.github.downace.stormfox.settings
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.actionsOnSave.ActionsOnSaveConfigurable
 import com.intellij.openapi.progress.ProcessCanceledException
 import java.util.concurrent.CancellationException
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
@@ -44,8 +45,8 @@ private const val LINTER_SECTION_TITLE = "Linter"
 private const val ANALYZER_SECTION_TITLE = "Analyzer"
 private const val GUARD_SECTION_TITLE = "Guard"
 private const val FORMATTER_HINT = "Mago replaces the IDE code style settings for PHP files."
-private const val FORMATTER_ON_SAVE_HINT =
-    "Formatting on save is controlled by the IDE: turn on Reformat code in Settings | Tools | Actions on Save."
+private const val FORMATTER_ON_SAVE_PREFIX = "<html>Enable&nbsp;<b>Reformat code</b>&nbsp;in&nbsp;</html>"
+private const val FORMATTER_ON_SAVE_LINK_SUFFIX = "\u00a0to format files on save."
 
 private val SECONDARY_TEXT_COLOR: Color = UIUtil.getContextHelpForeground()
 private val ERROR_TEXT_COLOR: Color = JBColor.namedColor("Label.errorForeground", UIUtil.getErrorForeground())
@@ -142,8 +143,17 @@ class MagoConfigurable(private val project: Project) : Configurable {
                 cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, JBUI.scale(HINT_INDENT), 0, 0)),
             )
             add(
-                hint(FORMATTER_ON_SAVE_HINT),
-                cell(gridx = 0, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(2, JBUI.scale(HINT_INDENT), 0, 0)),
+                JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
+                    add(JBLabel(FORMATTER_ON_SAVE_PREFIX))
+                    add(
+                        ActionsOnSaveConfigurable.createGoToPageInSettingsLink(
+                            "Actions on Save",
+                            ActionsOnSaveConfigurable.CONFIGURABLE_ID,
+                        ),
+                    )
+                    add(JBLabel(FORMATTER_ON_SAVE_LINK_SUFFIX))
+                },
+                cell(gridx = 0, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(6, 0, 0, 0)),
             )
         }
 
