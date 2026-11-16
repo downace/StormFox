@@ -18,7 +18,18 @@ Feel free to [report issues](https://github.com/downace/StormFox/issues) if you 
 1. Install [Mago](https://mago.carthage.software/) and make sure it runs on your machine.
 2. Install StormFox plugin from the [releases page](https://github.com/downace/StormFox/releases), [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/35857), or directly in the IDE via **Settings | Plugins | Marketplace** (search for **StormFox** or **Mago**).
    > The marketplace version may lag behind GitHub releases
-3. Open **Settings | PHP | Quality Tools | Mago** and set **Mago executable** to the binary.
+3. Open **Settings | PHP | Quality Tools | Mago** and set **Mago command** to the binary path or a command that starts Mago.
+
+### Docker and Docker Compose
+
+The command is a launch prefix: StormFox appends the Mago subcommand and arguments.
+For the [official Docker image](https://mago.carthage.software/latest/en/guide/installation/#docker), for example:
+
+```shell
+docker run --rm -i -v .:/app -w /app ghcr.io/carthage-software/mago:1.60.1
+```
+
+Set **Execution project root** to `/app`, the directory corresponding to the local project root.
 
 ## Usage
 

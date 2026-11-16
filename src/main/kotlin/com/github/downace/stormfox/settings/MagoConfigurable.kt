@@ -27,9 +27,11 @@ import java.awt.Font
 import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
 import java.awt.event.ActionListener
+import java.io.File
 import javax.swing.JComponent
 import javax.swing.JPanel
 import javax.swing.JSeparator
+import javax.swing.JTextField
 import javax.swing.SwingConstants
 import javax.swing.event.DocumentEvent
 
@@ -59,7 +61,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
     override fun getDisplayName(): String = "Mago"
 
     override fun createComponent(): JComponent {
-        val settingsUi = ui ?: SettingsUi(project.getService(MagoSettingsValidationService::class.java).createSession()).also { ui = it }
+        val settingsUi = ui ?: SettingsUi(project, project.getService(MagoSettingsValidationService::class.java).createSession()).also { ui = it }
         settingsUi.reset()
         return settingsUi.panel
     }
@@ -79,13 +81,19 @@ class MagoConfigurable(private val project: Project) : Configurable {
         ui = null
     }
 
-    private class SettingsUi(private val validation: MagoSettingsValidationService.Session) {
+    private class SettingsUi(private val project: Project, private val validation: MagoSettingsValidationService.Session) {
 
         fun dispose() = validation.dispose()
 
         private val enabledCheckBox = JBCheckBox("Use Mago formatter")
 
-        private val binaryField = TextFieldWithBrowseButton()
+        private val binaryField = TextFieldWithBrowseButton().apply {
+            toolTipText = "Enter a binary name, a full path, or a command that starts Mago. Do not include a Mago subcommand."
+        }
+
+        private val executionRootField = JTextField().apply {
+            toolTipText = "If Mago runs in a container, enter the project path inside the container, for example /app."
+        }
 
         private val configField = TextFieldWithBrowseButton().apply {
             toolTipText =
@@ -94,39 +102,47 @@ class MagoConfigurable(private val project: Project) : Configurable {
 
         private val binaryRow = PathRow(
             field = binaryField,
-            tooltip = "Check that the mago executable can be started",
-            check = { binary, _ -> MagoValidation.checkBinary(binary) },
+            tooltip = "Check that the Mago command can be started",
+            check = { binary, _, projectDirectory, executionRoot ->
+                MagoValidation.checkBinary(binary, projectDirectory, executionRoot)
+            },
         )
 
         private val configRow = PathRow(
             field = configField,
-            tooltip = "Check that mago accepts this configuration file",
-            check = { binary, config -> MagoValidation.checkConfig(binary, config) },
+            tooltip = "Check that the Mago command accepts this configuration file",
+            check = { binary, config, projectDirectory, executionRoot ->
+                MagoValidation.checkConfig(binary, config, projectDirectory, executionRoot)
+            },
         )
 
         /**
-         * The general settings: where mago lives and which configuration file it should use.
+         * The command used to run Mago and the configuration file it should use.
          *
          * Labels and fields share a row and are anchored to the top of it, so that a label lines up
          * with the field it belongs to instead of with the middle of the row.
          */
         private val generalBlock: JComponent = JPanel(GridBagLayout()).apply {
-            add(JBLabel("Mago executable:"), cell(gridx = 0, gridy = 0, anchor = GridBagConstraints.WEST))
+            add(JBLabel("Mago command:"), cell(gridx = 0, gridy = 0, anchor = GridBagConstraints.WEST))
             add(binaryRow.rowComponent, cell(gridx = 1, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH))
             add(binaryRow.status.component, cell(gridx = 1, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)))
 
             add(
-                JBLabel("Default configuration file:"),
-                cell(gridx = 0, gridy = 2, anchor = GridBagConstraints.WEST, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)),
+                hint(
+                    "<html>Enter one of:<ul style='margin-top:2px;margin-bottom:2px'>" +
+                        "<li>Binary name, for example <code>mago</code> (if it is in <code>PATH</code>)</li>" +
+                        "<li>Full path, for example <code>/usr/local/bin/mago</code></li>" +
+                        "<li>Command, for example:<br><code>docker run --rm -i -v .:/app<br>-w /app ghcr.io/carthage-software/mago:1.60.1</code></li>" +
+                        "</ul>Do not include a Mago subcommand.<br>For <code>docker run</code>, include <code>-i</code> and disable TTY allocation.</html>",
+                ),
+                cell(gridx = 1, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(2, 0, 0, 0)),
             )
-            add(
-                configRow.rowComponent,
-                cell(gridx = 1, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)),
-            )
-            add(
-                configRow.status.component,
-                cell(gridx = 1, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)),
-            )
+            add(JBLabel("Execution project root:"), cell(gridx = 0, gridy = 3, anchor = GridBagConstraints.WEST, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
+            add(executionRootField, cell(gridx = 1, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
+            add(hint("<html>If Mago runs in a container, enter the project path inside the container,<br>for example <code>/app</code>.</html>"), cell(gridx = 1, gridy = 4, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(2, 0, 0, 0)))
+            add(JBLabel("Default configuration file:"), cell(gridx = 0, gridy = 5, anchor = GridBagConstraints.WEST, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
+            add(configRow.rowComponent, cell(gridx = 1, gridy = 5, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
+            add(configRow.status.component, cell(gridx = 1, gridy = 6, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)))
         }
 
         /**
@@ -163,6 +179,17 @@ class MagoConfigurable(private val project: Project) : Configurable {
 
         private val guardBlock = inspectionBlock(GUARD_SECTION_TITLE, "MagoGuard")
 
+        init {
+            val markValidationStale = object : DocumentAdapter() {
+                override fun textChanged(e: DocumentEvent) {
+                    binaryRow.status.markStale()
+                    configRow.status.markStale()
+                }
+            }
+            binaryField.textField.document.addDocumentListener(markValidationStale)
+            executionRootField.document.addDocumentListener(markValidationStale)
+        }
+
         /**
          * The content is put into a BorderLayout.NORTH: a GridBagLayout would share the extra height
          * between its rows and the page would end up vertically centred in the dialog.
@@ -184,7 +211,8 @@ class MagoConfigurable(private val project: Project) : Configurable {
             val state = MagoSettings.getInstance().state
             return enabledCheckBox.isSelected != state.enabled ||
                 binaryField.text.trim() != state.magoPath.trim() ||
-                configField.text.trim() != state.configPath.trim()
+                configField.text.trim() != state.configPath.trim() ||
+                executionRootField.text.trim() != state.executionRoot.trim()
         }
 
         fun apply() {
@@ -192,6 +220,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
             state.enabled = enabledCheckBox.isSelected
             state.magoPath = binaryField.text.trim()
             state.configPath = configField.text.trim()
+            state.executionRoot = executionRootField.text.trim()
         }
 
         fun reset() {
@@ -199,6 +228,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
             enabledCheckBox.isSelected = state.enabled
             binaryField.text = state.magoPath
             configField.text = state.configPath
+            executionRootField.text = state.executionRoot
             binaryRow.status.show(StatusLine.Kind.EMPTY, "")
             configRow.status.show(StatusLine.Kind.EMPTY, "")
         }
@@ -274,7 +304,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
         private inner class PathRow(
             val field: TextFieldWithBrowseButton,
             val tooltip: String,
-            val check: (binaryPath: String, configPath: String) -> MagoValidation.Result,
+            val check: (binaryPath: String, configPath: String, projectDirectory: File?, executionRoot: String) -> MagoValidation.Result,
         ) {
 
             val validateButton = InlineIconButton(AllIcons.Actions.Refresh)
@@ -304,13 +334,15 @@ class MagoConfigurable(private val project: Project) : Configurable {
             fun validate() {
                 val binaryPath = binaryField.text.trim()
                 val ownPath = field.text.trim()
+                val executionRoot = executionRootField.text.trim()
+                val projectDirectory = project.basePath
                 checkRunning = true
                 validateButton.isEnabled = false
                 status.show(StatusLine.Kind.CHECKING, CHECKING_TEXT)
 
                 validation.validate(check = {
                     try {
-                        check(binaryPath, ownPath)
+                        check(binaryPath, ownPath, projectDirectory?.let(::File), executionRoot)
                     } catch (e: ProcessCanceledException) {
                         throw e
                     } catch (e: CancellationException) {
@@ -321,7 +353,11 @@ class MagoConfigurable(private val project: Project) : Configurable {
                 }, update = { result ->
                     checkRunning = false
                     validateButton.isEnabled = true
-                    if (binaryField.text.trim() != binaryPath || field.text.trim() != ownPath) {
+                    if (binaryField.text.trim() != binaryPath ||
+                        field.text.trim() != ownPath ||
+                        executionRootField.text.trim() != executionRoot ||
+                        project.basePath != projectDirectory
+                    ) {
                         status.show(StatusLine.Kind.STALE, NOT_VALIDATED_TEXT)
                     } else {
                         when (result) {

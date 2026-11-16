@@ -33,6 +33,7 @@ open class MagoDiagnosticAnnotator(
         val file: VirtualFile? = null,
         val generation: Long = 0,
         val environment: Map<String, String> = System.getenv(),
+        val executionRoot: String = "",
     )
 
     class Report internal constructor(val snapshot: Snapshot, internal val result: MagoDiagnosticRunner.Result,
@@ -51,12 +52,12 @@ open class MagoDiagnosticAnnotator(
         val text = document?.text ?: file.text
         return Snapshot(text, virtualFile.path, workingDirectory, settings.magoPath.ifBlank { "mago" }, settings.configPath,
             document?.modificationStamp ?: file.modificationStamp, file.project, virtualFile,
-            file.project.getService(MagoDiagnosticService::class.java).epoch)
+            file.project.getService(MagoDiagnosticService::class.java).epoch, executionRoot = settings.executionRoot)
     }
 
     override fun doAnnotate(collectedInfo: Snapshot): Report? {
         if (batch) return Report(collectedInfo, MagoDiagnosticRunner.run(collectedInfo.binary, collectedInfo.workingDirectory,
-            collectedInfo.configPath, collectedInfo.logicalPath, collectedInfo.text, source))
+            collectedInfo.configPath, collectedInfo.logicalPath, collectedInfo.text, source, executionRoot = collectedInfo.executionRoot))
         else {
             val project = collectedInfo.project ?: return null
             val service = project.getService(MagoDiagnosticService::class.java)
@@ -88,6 +89,7 @@ open class MagoDiagnosticAnnotator(
         if (snapshot.project != null) {
             val settings = MagoSettings.getInstance().state
             if (snapshot.binary != settings.magoPath.ifBlank { "mago" } || snapshot.configPath != settings.configPath ||
+                snapshot.executionRoot != settings.executionRoot ||
                 snapshot.generation != file.project.getService(MagoDiagnosticService::class.java).epoch) { skip("settings-or-generation"); return }
         }
         val (inspection, severity, key) = inspection(file, source, batchProfile) ?: run { skip("inspection-disabled"); return }

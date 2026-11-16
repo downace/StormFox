@@ -1,6 +1,7 @@
 package com.github.downace.stormfox.format
 
-import com.github.downace.stormfox.resolveMagoExecutable
+import com.github.downace.stormfox.MagoExecutionContext
+import com.github.downace.stormfox.terminateMagoProcess
 import com.github.downace.stormfox.MagoVersion
 import com.github.downace.stormfox.MagoVersionService
 import com.intellij.execution.ExecutionException
@@ -11,6 +12,7 @@ import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import java.nio.charset.StandardCharsets
+import java.io.File
 import java.util.concurrent.CancellationException
 
 internal object MagoValidation {
@@ -24,19 +26,21 @@ internal object MagoValidation {
         data class Failure(val message: String) : Result
     }
 
-    fun checkBinary(binaryPath: String): Result {
+    fun checkBinary(binaryPath: String, projectDirectory: File? = null, executionRoot: String = ""): Result {
         val service = MagoVersionService.getInstance()
-        val token = service.beginValidation(binaryPath)
-        val result = checkBinaryUncached(binaryPath)
-        service.finish(token, binaryPath, result)
+        val token = service.beginValidation(binaryPath, projectDirectory, executionRoot)
+        val result = checkBinaryUncached(binaryPath, projectDirectory, executionRoot)
+        service.finish(token, binaryPath, result, projectDirectory, executionRoot)
         return result
     }
 
-    internal fun checkBinaryUncached(binaryPath: String): Result {
+    internal fun checkBinaryUncached(binaryPath: String, projectDirectory: File? = null, executionRoot: String = ""): Result {
         if (binaryPath.isBlank()) {
-            return Result.Failure("The path to the mago binary is not set")
+            return Result.Failure("The Mago command is not set")
         }
-        return when (val outcome = run(listOf(resolveMagoExecutable(binaryPath), "--version"))) {
+        val arguments = try { MagoExecutionContext(binaryPath, projectDirectory, executionRoot).command() + "--version" }
+        catch (e: IllegalArgumentException) { return Result.Failure(e.message ?: "Invalid Mago command") }
+        return when (val outcome = run(arguments, projectDirectory)) {
             is Result.Success -> {
                 val message = outcome.message.trim().ifEmpty { "mago is available" }
                 val version = MagoVersion.parse(message)
@@ -48,22 +52,27 @@ internal object MagoValidation {
         }
     }
 
-    fun checkConfig(binaryPath: String, configPath: String): Result {
+    fun checkConfig(binaryPath: String, configPath: String, projectDirectory: File? = null, executionRoot: String = ""): Result {
         if (binaryPath.isBlank()) {
-            return Result.Failure("The path to the mago binary is not set")
+            return Result.Failure("The Mago command is not set")
         }
         if (configPath.isBlank()) {
             return Result.Success("Not set - mago uses the configuration of the project")
         }
-        return when (val outcome = run(listOf(resolveMagoExecutable(binaryPath), "--config", configPath, "config"))) {
+        val arguments = try {
+            val context = MagoExecutionContext(binaryPath, projectDirectory, executionRoot)
+            context.command() + listOf("--config", context.toExecution(configPath), "config")
+        } catch (e: IllegalArgumentException) { return Result.Failure(e.message ?: "Invalid Mago command") }
+        return when (val outcome = run(arguments, projectDirectory)) {
             is Result.Success -> Result.Success("Configuration is valid")
             is Result.Failure -> outcome
         }
     }
 
-    private fun run(arguments: List<String>): Result {
+    private fun run(arguments: List<String>, workingDirectory: File?): Result {
         ProgressManager.checkCanceled()
         val commandLine = GeneralCommandLine(arguments).withCharset(StandardCharsets.UTF_8)
+        if (workingDirectory != null) commandLine.withWorkDirectory(workingDirectory)
 
         val handler = try {
             CapturingProcessHandler(commandLine)
@@ -73,6 +82,8 @@ internal object MagoValidation {
         }
 
         return try {
+            // Validation commands never send input; wrappers may wait for EOF before exiting.
+            handler.processInput.close()
             val indicator = ProgressManager.getInstance().progressIndicator ?: EmptyProgressIndicator()
             indicator.checkCanceled()
             val output = handler.runProcessWithProgressIndicator(indicator, TIMEOUT_MS, true)
@@ -93,7 +104,7 @@ internal object MagoValidation {
             LOG.warn("mago validation failed", e)
             return Result.Failure(e.message ?: e.toString())
         } finally {
-            handler.destroyProcess()
+            terminateMagoProcess(handler)
         }
     }
 

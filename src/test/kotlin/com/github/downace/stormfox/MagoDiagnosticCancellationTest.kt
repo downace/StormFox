@@ -1,7 +1,7 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.lint.withMagoCancellation
-import com.github.downace.stormfox.lint.terminateMagoProcess
+import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.testFramework.fixtures.BasePlatformTestCase

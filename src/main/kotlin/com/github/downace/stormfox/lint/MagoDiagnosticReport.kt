@@ -1,5 +1,6 @@
 package com.github.downace.stormfox.lint
 
+import com.github.downace.stormfox.MagoPathMappingException
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
@@ -39,7 +40,8 @@ internal object MagoDiagnosticReport {
         val filePath: String? = null,
     )
 
-    fun parse(json: String, text: String, logicalPath: String, workingDirectory: File?, source: MagoTool = MagoTool.LINT): List<Diagnostic> {
+    fun parse(json: String, text: String, logicalPath: String, workingDirectory: File?, source: MagoTool = MagoTool.LINT,
+              mapPath: (String) -> String = { it }): List<Diagnostic> {
         JsonReader(StringReader(json)).use {
             require(it.peek() == JsonToken.BEGIN_OBJECT) { "Expected a diagnostic report object" }
             it.skipValue()
@@ -58,7 +60,7 @@ internal object MagoDiagnosticReport {
             val message = issue.requiredString("message")
             val level = issue.requiredString("level")
             val code = issue.optionalString("code")
-            val fix = parseFix(issue.get("edits"), text, offsets, expectedPath, workingDirectory)
+            val fix = parseFix(issue.get("edits"), text, offsets, expectedPath, workingDirectory, mapPath)
             val notes = issue.get("notes")?.takeUnless { it.isJsonNull }?.let { values ->
                 require(values.isJsonArray) { "Expected notes array" }
                 values.asJsonArray.map { value ->
@@ -75,7 +77,7 @@ internal object MagoDiagnosticReport {
                 if (annotation.requiredString("kind") != "Secondary") return@mapNotNull null
                 val span = annotation.get("span")?.takeUnless { it.isJsonNull } ?: return@mapNotNull null
                 require(span.isJsonObject) { "Expected span object" }
-                val path = span.asJsonObject.filePath() ?: return@mapNotNull null
+                val path = span.asJsonObject.filePath()?.let(mapPath) ?: return@mapNotNull null
                 val start = span.asJsonObject.get("start")?.takeUnless { it.isJsonNull }
                 if (start != null) require(start.isJsonObject) { "Expected span position" }
                 val line = start?.asJsonObject?.get("line")?.takeUnless { it.isJsonNull }?.let {
@@ -100,7 +102,7 @@ internal object MagoDiagnosticReport {
                 if (annotation.requiredString("kind") != "Primary") continue
                 val span = annotation.get("span")?.takeUnless { it.isJsonNull } ?: continue
                 require(span.isJsonObject) { "Expected span object" }
-                val path = span.asJsonObject.filePath() ?: continue
+                val path = span.asJsonObject.filePath()?.let(mapPath) ?: continue
                 if (normalizePath(path, workingDirectory) != expectedPath) continue
                 val start = offset(span.asJsonObject.get("start")) ?: continue
                 val end = offset(span.asJsonObject.get("end")) ?: continue
@@ -117,7 +119,8 @@ internal object MagoDiagnosticReport {
     private fun JsonObject.requiredString(name: String): String =
         requireNotNull(optionalString(name)) { "Missing $name" }
 
-    private fun parseFix(value: JsonElement?, text: String, offsets: IntArray, expectedPath: String, workingDirectory: File?): Fix? {
+    private fun parseFix(value: JsonElement?, text: String, offsets: IntArray, expectedPath: String, workingDirectory: File?,
+                         mapPath: (String) -> String): Fix? {
         if (value == null || value.isJsonNull) return null
         return try {
             require(value.isJsonArray)
@@ -133,7 +136,7 @@ internal object MagoDiagnosticReport {
                 val descriptor = pair[0].asJsonObject
                 val path = descriptor.optionalString("name")?.takeIf { it.isNotBlank() }
                     ?: descriptor.optionalString("path")?.takeIf { it.isNotBlank() }
-                require(path != null && normalizePath(path, workingDirectory) == expectedPath)
+                require(path != null && normalizePath(mapPath(path), workingDirectory) == expectedPath)
                 require(pair[1].isJsonArray)
                 for (element in pair[1].asJsonArray) {
                     val edit = element.asJsonObject
@@ -162,6 +165,8 @@ internal object MagoDiagnosticReport {
             }
             if (edits.isEmpty()) return null
             Fix(MagoDiagnosticBatchFixes.stitch(text, edits), safety, edits.toList())
+        } catch (e: MagoPathMappingException) {
+            throw e
         } catch (_: RuntimeException) {
             null
         } catch (_: java.nio.charset.CharacterCodingException) {

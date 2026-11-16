@@ -16,6 +16,7 @@ import com.jetbrains.jsonSchema.ide.JsonSchemaService
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import java.io.File
 
 class MagoJsonSchemaProviderFactory : JsonSchemaProviderFactory {
     override fun getProviders(project: Project): List<JsonSchemaFileProvider> =
@@ -48,7 +49,7 @@ internal class MagoSchemaProjectService(private val project: Project, private va
 class MagoJsonSchemaProvider internal constructor(
     private val project: Project,
     private val baseUrl: String = "https://mago.carthage.software",
-    private val version: () -> String? = { MagoVersionService.getInstance().cachedVersion()?.toString() },
+    private val version: () -> String? = { MagoVersionService.getInstance().cachedVersion(project.basePath?.let(::File))?.toString() },
     private val onChange: () -> Unit = {
         if (!project.isDisposed) JsonSchemaService.Impl.get(project).reset()
     },

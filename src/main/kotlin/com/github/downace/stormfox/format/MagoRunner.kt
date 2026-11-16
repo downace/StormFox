@@ -1,6 +1,7 @@
 package com.github.downace.stormfox.format
 
-import com.github.downace.stormfox.resolveMagoExecutable
+import com.github.downace.stormfox.MagoExecutionContext
+import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -25,7 +26,10 @@ internal object MagoRunner {
         @Synchronized
         fun cancel() {
             cancelled = true
-            process?.destroyForcibly()
+            process?.let {
+                it.descendants().use { children -> children.forEach { child -> child.destroyForcibly() } }
+                it.destroyForcibly()
+            }
         }
 
         @Synchronized
@@ -65,9 +69,16 @@ internal object MagoRunner {
         logicalPath: String,
         text: String,
         cancellation: Cancellation = Cancellation(),
+        executionRoot: String = "",
     ): Result {
         cancellation.checkCanceled()
-        val commandLine = GeneralCommandLine(buildArguments(binary, configPath, logicalPath))
+        val arguments = try {
+            val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
+            buildArguments(context, configPath, logicalPath)
+        } catch (e: IllegalArgumentException) {
+            return Result.Failure(e.message ?: "Invalid Mago command")
+        }
+        val commandLine = GeneralCommandLine(arguments)
             .withCharset(StandardCharsets.UTF_8)
 
         if (workingDirectory != null) {
@@ -104,6 +115,8 @@ internal object MagoRunner {
             when {
                 output.isTimeout -> Result.Failure("mago did not finish within ${TIMEOUT_MS / 1000} seconds")
                 output.exitCode != 0 -> Result.Failure(errorMessage(output.stderr, output.exitCode))
+                text.isNotEmpty() && output.stdout.isBlank() ->
+                    Result.Failure("mago returned no formatted content for non-empty input; verify stdin forwarding (for docker run, use -i). The original text was preserved.")
                 else -> Result.Success(output.stdout)
             }
         } catch (e: ProcessCanceledException) {
@@ -114,20 +127,20 @@ internal object MagoRunner {
             LOG.warn("mago failed", e)
             Result.Failure("mago failed: ${e.message ?: e.toString()}")
         } finally {
-            handler.destroyProcess()
+            terminateMagoProcess(handler)
             writer?.cancel(true)
         }
     }
 
-    private fun buildArguments(binary: String, configPath: String, logicalPath: String): List<String> {
+    private fun buildArguments(context: MagoExecutionContext, configPath: String, logicalPath: String): List<String> {
         val arguments = mutableListOf<String>()
         if (configPath.isNotBlank()) {
             // Global flags have to come before the subcommand.
             arguments += "--config"
-            arguments += configPath
+            arguments += context.toExecution(configPath)
         }
-        arguments += listOf("format", "--stdin-input", "--stdin-filepath", logicalPath)
-        return listOf(resolveMagoExecutable(binary)) + arguments
+        arguments += listOf("format", "--stdin-input", "--stdin-filepath", context.toExecution(logicalPath))
+        return context.command() + arguments
     }
 
     /**

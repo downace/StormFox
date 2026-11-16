@@ -33,7 +33,7 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
     override fun createFormattingTask(request: AsyncFormattingRequest): FormattingTask? {
         val settings = MagoSettings.getInstance().state
         if (settings.magoPath.isBlank()) {
-            request.onError(TOOL_NAME, "The path to the mago binary is not configured. Set it in $SETTINGS_LOCATION.")
+            request.onError(TOOL_NAME, "The Mago command is not configured. Set it in $SETTINGS_LOCATION.")
             return null
         }
 
@@ -55,6 +55,7 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
             workingDirectory = workingDirectory,
             logicalPath = logicalPath,
             originalText = request.documentText,
+            executionRoot = settings.executionRoot,
         )
     }
 
@@ -70,8 +71,9 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         private val workingDirectory: File?,
         private val logicalPath: String,
         private val originalText: String,
+        private val executionRoot: String = "",
         private val format: (MagoRunner.Cancellation) -> MagoRunner.Result = { cancellation ->
-            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation)
+            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot)
         },
     ) : AsyncDocumentFormattingService.FormattingTask {
 

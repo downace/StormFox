@@ -1,6 +1,7 @@
 package com.github.downace.stormfox.lint
 
-import com.github.downace.stormfox.resolveMagoExecutable
+import com.github.downace.stormfox.MagoExecutionContext
+import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -28,15 +29,6 @@ internal suspend fun <T> withMagoCancellation(action: (ProgressIndicator) -> T):
     }
 }
 
-internal fun terminateMagoProcess(handler: CapturingProcessHandler) {
-    val process = handler.process
-    if (process.isAlive) {
-        process.descendants().use { children -> children.forEach { it.destroyForcibly() } }
-        process.destroyForcibly()
-    }
-    handler.destroyProcess()
-}
-
 internal object MagoDiagnosticRunner {
     private val log = Logger.getInstance(MagoDiagnosticRunner::class.java)
 
@@ -53,20 +45,23 @@ internal object MagoDiagnosticRunner {
     fun arguments(binary: String, configPath: String, logicalPath: String, workingDirectory: File, tool: MagoTool = MagoTool.LINT): List<String> {
         val relativePath = workingDirectory.toPath().toAbsolutePath().normalize()
             .relativize(File(logicalPath).toPath().toAbsolutePath().normalize()).toString().replace('\\', '/')
-        return globalArguments(binary, configPath) + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relativePath)
+        return globalArguments(MagoExecutionContext(binary, workingDirectory), configPath) + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relativePath)
     }
 
-    private fun globalArguments(binary: String, configPath: String): List<String> {
+    private fun globalArguments(context: MagoExecutionContext, configPath: String): List<String> {
         return buildList {
-            add(resolveMagoExecutable(binary))
-            if (configPath.isNotBlank()) addAll(listOf("--config", configPath))
+            addAll(context.command())
+            if (configPath.isNotBlank()) addAll(listOf("--config", context.toExecution(configPath)))
         }
     }
 
     fun run(binary: String, workingDirectory: File, configPath: String, logicalPath: String, text: String,
-             tool: MagoTool = MagoTool.LINT, indicator: ProgressIndicator? = null): Result {
+             tool: MagoTool = MagoTool.LINT, indicator: ProgressIndicator? = null, executionRoot: String = ""): Result {
         ProgressManager.checkCanceled()
-        val source = execute(globalArguments(binary, configPath) + listOf("config", "--show", "source"), workingDirectory, "", 0..0, indicator, tool.timeoutMillis)
+        val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
+        val globals = try { globalArguments(context, configPath) }
+        catch (e: IllegalArgumentException) { return failure("Invalid Mago command: ${e.message}", e) }
+        val source = execute(globals + listOf("config", "--show", "source"), workingDirectory, "", 0..0, indicator, tool.timeoutMillis)
         if (source is ProcessResult.Failure) return Result.Failure(source.message)
         source as ProcessResult.Success
         val workspace = try {
@@ -81,14 +76,18 @@ internal object MagoDiagnosticRunner {
                 configuredPath.startsWith("\\\\?\\") -> configuredPath.substring(4)
                 else -> configuredPath
             }
-            File(normalizedPath).let { if (it.isAbsolute) it else File(workingDirectory, normalizedPath) }
+            if (executionRoot.isNotBlank()) File(context.toHost(normalizedPath))
+            else File(normalizedPath).let { if (it.isAbsolute) it else File(workingDirectory, normalizedPath) }
         } catch (e: com.google.gson.JsonParseException) {
             return failure("Mago returned an invalid source configuration: ${e.message}", e, source.stdout + "\n" + source.stderr)
         } catch (e: IllegalArgumentException) {
             return failure("Mago returned an invalid source configuration: ${e.message}", e, source.stdout + "\n" + source.stderr)
         }
         val arguments = try {
-            arguments(binary, configPath, logicalPath, workspace, tool)
+            if (executionRoot.isNotBlank()) context.toExecution(logicalPath)
+            val relative = workspace.toPath().toAbsolutePath().normalize()
+                .relativize(File(logicalPath).toPath().toAbsolutePath().normalize()).toString().replace('\\', '/')
+            globals + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relative)
         } catch (e: IllegalArgumentException) {
             return failure("Cannot resolve Mago ${tool.command} path: ${e.message}", e)
         }
@@ -96,7 +95,10 @@ internal object MagoDiagnosticRunner {
         if (output is ProcessResult.Failure) return Result.Failure(output.message)
         output as ProcessResult.Success
         return try {
-            Result.Success(MagoDiagnosticReport.parse(output.stdout, text, logicalPath, workspace, tool))
+            val executionWorkspace = if (executionRoot.isBlank()) "" else context.toExecution(workspace.path)
+            Result.Success(MagoDiagnosticReport.parse(output.stdout, text, logicalPath, workspace, tool) {
+                if (executionRoot.isBlank()) it else context.toHost(it, executionWorkspace)
+            })
         } catch (e: com.google.gson.JsonParseException) {
             failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, output.stdout + "\n" + output.stderr)
         } catch (e: IllegalArgumentException) {

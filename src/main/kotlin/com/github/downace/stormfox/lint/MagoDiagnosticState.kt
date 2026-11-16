@@ -18,6 +18,7 @@ internal data class MagoSnapshot(
     val configPath: String,
     val environment: Map<String, String>,
     val generation: Long,
+    val executionRoot: String = "",
 )
 
 internal class MagoDiagnosticState<K>(

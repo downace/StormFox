@@ -70,7 +70,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
         if (testCompute != null) testCompute(tool, snapshot) else workers.getValue(tool).withPermit {
             withMagoCancellation { indicator ->
                 MagoDiagnosticRunner.run(snapshot.binary, snapshot.workingDirectory, snapshot.configPath,
-                    snapshot.logicalPath, snapshot.text, tool, indicator)
+                    snapshot.logicalPath, snapshot.text, tool, indicator, snapshot.executionRoot)
             }
         }
     }, { file, tool, snapshot ->
@@ -114,12 +114,12 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
                 val directory = project.basePath?.let(::File) ?: File(path).parentFile
                     ?: return@synchronized drop("no-working-directory")
                 val current = MagoDiagnosticAnnotator.Snapshot(text, path, directory,
-                    settings.magoPath.ifBlank { "mago" }, settings.configPath, revision, project, file, epoch, System.getenv())
+                    settings.magoPath.ifBlank { "mago" }, settings.configPath, revision, project, file, epoch, System.getenv(), settings.executionRoot)
                 if (current != input) {
                     trace("resolve-current file=$path tool=$tool inputRevision=${input.revision} revision=$revision inputGeneration=${input.generation} generation=${current.generation} metadataChanged=true")
                 }
                 val worker = MagoSnapshot(current.revision, current.text, current.logicalPath, current.workingDirectory,
-                    current.binary, current.configPath, current.environment, current.generation)
+                    current.binary, current.configPath, current.environment, current.generation, current.executionRoot)
                 val view = state.requestView(file, tool, worker, verifiedCurrent = true)
                     ?: return@synchronized null
                 action(MagoDiagnosticAnnotator.Report(current, view.result, view.retained, view))
@@ -160,7 +160,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
             }
         })
         scope.launch {
-            fun settingsKey() = MagoSettings.getInstance().state.let { it.magoPath to it.configPath }
+            fun settingsKey() = MagoSettings.getInstance().state.let { Triple(it.magoPath, it.configPath, it.executionRoot) }
             var previous = settingsKey()
             while (isActive) {
                 delay(1000)
