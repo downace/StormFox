@@ -36,8 +36,7 @@
 
     <change-notes><![CDATA[
     <ul>
-        <li><b>Mago <a href="https://mago.carthage.software/latest/en/tools/analyzer/overview/">Analyzer</a> and <a href="https://mago.carthage.software/latest/en/tools/guard/overview/">Guard</a> inspections.</b></li>
-        <li>Independent background checks keep linter findings responsive while longer checks run.</li>
+        <li><b>Run Mago via Docker, Docker Compose, or a custom command</b>, with project path mapping for containers.</li>
     </ul>
     ]]></change-notes>
 
