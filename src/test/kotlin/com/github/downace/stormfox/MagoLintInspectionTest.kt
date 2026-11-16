@@ -123,6 +123,17 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         val builderType = com.intellij.lang.annotation.AnnotationBuilder::class.java
         val builder = Proxy.newProxyInstance(builderType.classLoader, arrayOf(builderType)) { proxy, method, args ->
             calls += method.name to args.orEmpty().toList()
+            if (method.name == "newFix") {
+                val fixType = com.intellij.lang.annotation.AnnotationBuilder.FixBuilder::class.java
+                return@newProxyInstance Proxy.newProxyInstance(fixType.classLoader, arrayOf(fixType)) { fixProxy, fixMethod, fixArgs ->
+                    calls += fixMethod.name to fixArgs.orEmpty().toList()
+                    when (fixMethod.returnType) {
+                        fixType -> fixProxy
+                        builderType -> proxy
+                        else -> null
+                    }
+                }
+            }
             if (method.returnType == builderType) proxy else null
         }
         val holder = Proxy.newProxyInstance(AnnotationHolder::class.java.classLoader, arrayOf(AnnotationHolder::class.java)) { _, method, args ->

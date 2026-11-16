@@ -68,7 +68,7 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
     fun testCapturedTreeHasFlatSameRuleVariantsAndGlobalThresholds() {
         val captured = actions(listOf("safe", "potentiallyunsafe", "unsafe"))
         val current = captured.first().first().asIntention()
-        assertEquals(listOf("Fix all example problems in file (unsafe)",
+        assertEquals(listOf("Suppress with @mago-expect", "Suppress with @mago-ignore", "Fix all example problems in file (unsafe)",
             "Fix all example problems in file (potentially unsafe)",
             "Fix all example problems in file"), options(current).map { it.text })
         assertTrue(options(current).all { options(it).isEmpty() })
@@ -77,10 +77,11 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
         assertEquals(listOf("Fix all problems in file (including potentially unsafe)",
             "Fix all problems in file (including unsafe)"), options(global).map { it.text })
         assertEquals(PriorityAction.Priority.HIGH, (current as PriorityAction).priority)
+        assertTrue(options(current).take(2).all { it.isAvailable(project, myFixture.editor, myFixture.file) })
         assertEquals(PriorityAction.Priority.NORMAL, (global as PriorityAction).priority)
         assertTrue(options(current).all { (it as PriorityAction).priority == PriorityAction.Priority.NORMAL })
         assertTrue(options(global).all { (it as PriorityAction).priority == PriorityAction.Priority.NORMAL })
-        assertTrue(options(current).all { it.generatePreview(project, myFixture.editor, myFixture.file) == IntentionPreviewInfo.EMPTY })
+        assertTrue(options(current).drop(2).all { it.generatePreview(project, myFixture.editor, myFixture.file) == IntentionPreviewInfo.EMPTY })
         assertTrue(options(global).all { it.generatePreview(project, myFixture.editor, myFixture.file) == IntentionPreviewInfo.EMPTY })
         assertEquals(IntentionPreviewInfo.EMPTY, global.generatePreview(project, myFixture.editor, myFixture.file))
         assertNotSame(IntentionPreviewInfo.EMPTY, current.generatePreview(project, myFixture.editor, myFixture.file))
@@ -88,7 +89,7 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
 
     fun testNoSafeEditsStillExposeHigherActionsAndRuleOptions() {
         val captured = actions(listOf("potentiallyunsafe", "unsafe"), listOf("a", "b"))
-        assertEquals(listOf("Fix all a problems in file (potentially unsafe)"),
+        assertEquals(listOf("Suppress with @mago-expect", "Suppress with @mago-ignore", "Fix all a problems in file (potentially unsafe)"),
             options(captured.first().first().asIntention()).map { it.text })
         val global = captured.first().last().asIntention()
         assertEquals("Mago: Fix all problems in file (including potentially unsafe)", global.text)
@@ -101,16 +102,16 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
         val captured = actions(listOf("safe"))
         val current = captured.single().first().asIntention()
         assertEquals("Mago: Fix example", current.text)
-        assertEquals(listOf("Fix all example problems in file"), options(current).map { it.text })
+        assertEquals(listOf("Suppress with @mago-expect", "Suppress with @mago-ignore", "Fix all example problems in file"), options(current).map { it.text })
         assertEquals(PriorityAction.Priority.HIGH, (current as PriorityAction).priority)
-        assertEquals(PriorityAction.Priority.NORMAL, (options(current).single() as PriorityAction).priority)
+        assertEquals(PriorityAction.Priority.NORMAL, (options(current).last() as PriorityAction).priority)
         assertEquals(IntentionPreviewInfo.EMPTY,
-            options(current).single().generatePreview(project, myFixture.editor, myFixture.file))
-        assertNull(myFixture.getIntentionPreviewText(options(current).single()))
+            options(current).last().generatePreview(project, myFixture.editor, myFixture.file))
+        assertNull(myFixture.getIntentionPreviewText(options(current).last()))
         assertEquals(com.intellij.icons.AllIcons.Actions.IntentionBulb,
             (current as com.intellij.openapi.util.Iconable).getIcon(0))
         assertEquals(com.intellij.icons.AllIcons.Actions.IntentionBulb,
-            (options(current).single() as com.intellij.openapi.util.Iconable).getIcon(0))
+            (options(current).last() as com.intellij.openapi.util.Iconable).getIcon(0))
     }
 
     fun testBatchPreviewDoesNotMutateAndOneUndoRestoresWholeFile() {

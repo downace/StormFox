@@ -139,16 +139,22 @@ open class MagoDiagnosticAnnotator(
                     if (it.relatedLocations.any { location -> location.filePath != null && location.range != null }) {
                         builder.registerFix(MagoShowRelatedLocationsAction(it.relatedLocations, it.snapshotHash, file.virtualFile))
                     }
+                    val suppressions = if (MagoSuppressAction.validCode(it.code)) MagoSuppressAction.Mode.entries.map { mode ->
+                        MagoSuppressAction(it, file.virtualFile, mode).asIntention()
+                    } else emptyList()
                     it.fix?.let { fix ->
                         val code = it.code?.takeIf { code -> code.isNotBlank() }
                         val sameRule = if (code == null) emptyList() else ruleBatches[code].orEmpty()
-                        val options = sameRule.asReversed().map { batch ->
+                        val options = suppressions + sameRule.asReversed().map { batch ->
                             MagoApplyFixAction(batch.fix, snapshotHash, file.virtualFile, null, "",
                                 baseLabel = "Fix all $code problems in file", showPreview = false,
                                 priority = PriorityAction.Priority.NORMAL).asIntention()
                         }
                         builder.registerFix(MagoApplyFixAction(fix, it.snapshotHash, file.virtualFile, it.code, it.message,
                             options, priority = PriorityAction.Priority.HIGH))
+                    }
+                    if (it.fix == null && suppressions.isNotEmpty()) {
+                        builder.registerFix(MagoSuppressAction(it, file.virtualFile, MagoSuppressAction.Mode.EXPECT, suppressions, primary = true))
                     }
                     global?.let { action -> builder.registerFix(action) }
                     builder.create()
