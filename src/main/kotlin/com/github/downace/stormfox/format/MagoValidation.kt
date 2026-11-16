@@ -44,8 +44,12 @@ internal object MagoValidation {
             is Result.Success -> {
                 val message = outcome.message.trim().ifEmpty { "mago is available" }
                 val version = MagoVersion.parse(message)
-                val warning = if (version != null && !version.isTested)
-                    "Mago $version is outside the tested range 1.59.0–1.60.1. Other versions may work, but could cause errors." else null
+                if (version != null && !version.isSupported) {
+                    return Result.Failure("Mago $version is not supported. Use Mago 1.18.0 or newer.")
+                }
+                val warning = if (version != null && !version.supportsFilepathAwareExcludes)
+                    "Mago $version may format files excluded by source.excludes or formatter.excludes. Use Mago 1.25.0 or newer to honor these exclusions."
+                else null
                 Result.Success(message, warning)
             }
             is Result.Failure -> outcome
@@ -95,7 +99,11 @@ internal object MagoValidation {
                 val message = output.stderr.trim().ifEmpty { output.stdout.trim() }
                 return Result.Failure(message.ifEmpty { "mago exited with code ${output.exitCode}" })
             }
-            return Result.Success(output.stdout)
+            // Some Mago builds emit informational output (including --version) on stderr.
+            val message = listOf(output.stdout.trim(), output.stderr.trim())
+                .filter(String::isNotEmpty)
+                .joinToString("\n")
+            return Result.Success(message)
         } catch (e: ProcessCanceledException) {
             throw e
         } catch (e: CancellationException) {

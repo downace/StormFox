@@ -97,7 +97,7 @@ internal class MagoSuppressAction(
                 }
             }
             val newline = if (text.contains("\r\n")) "\r\n" else "\n"
-            val comment = "// @mago-${mode.pragma} $category:$code(1)"
+            val comment = "// @mago-${mode.pragma} $category:$code"
             return if (inlineOpening) insertion to "$newline$indent$comment$newline$indent"
             else insertion to "$insertionIndent$comment$newline"
         }

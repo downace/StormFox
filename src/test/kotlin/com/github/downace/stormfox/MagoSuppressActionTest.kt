@@ -35,7 +35,7 @@ class MagoSuppressActionTest : BasePlatformTestCase() {
             val text = "<?php\n    echo 'ü';\n"
             myFixture.configureByText("Sample.php", text)
             val intention = action(text, tool)
-            val expected = "<?php\n    // @mago-expect $category:some-rule(1)\n    echo 'ü';\n"
+            val expected = "<?php\n    // @mago-expect $category:some-rule\n    echo 'ü';\n"
             assertEquals(expected, myFixture.getIntentionPreviewText(intention))
             myFixture.launchAction(intention)
             assertEquals(expected, myFixture.editor.document.text)
@@ -48,7 +48,7 @@ class MagoSuppressActionTest : BasePlatformTestCase() {
         val intention = action(text)
         assertTrue(intention.isAvailable(project, myFixture.editor, myFixture.file))
         myFixture.launchAction(intention)
-        assertEquals("<?php\n// @mago-expect lint:some-rule(1)\n echo 1;", myFixture.editor.document.text)
+        assertEquals("<?php\n// @mago-expect lint:some-rule\n echo 1;", myFixture.editor.document.text)
         assertFalse(intention.isAvailable(project, myFixture.editor, myFixture.file))
     }
 
@@ -63,7 +63,7 @@ class MagoSuppressActionTest : BasePlatformTestCase() {
         val text = "<?php\n// café 😀\n\techo 1;"
         myFixture.configureByText("Sample.php", text)
         val intention = action(text, mode = MagoSuppressAction.Mode.IGNORE)
-        val expected = "<?php\n// café 😀\n\t// @mago-ignore lint:some-rule(1)\n\techo 1;"
+        val expected = "<?php\n// café 😀\n\t// @mago-ignore lint:some-rule\n\techo 1;"
         assertEquals(expected, myFixture.getIntentionPreviewText(intention))
         myFixture.launchAction(intention)
         assertEquals(expected, myFixture.editor.document.text)
@@ -75,7 +75,7 @@ class MagoSuppressActionTest : BasePlatformTestCase() {
         val intention = action(text)
         assertTrue(intention.isAvailable(project, myFixture.editor, myFixture.file))
         myFixture.launchAction(intention)
-        assertEquals("<?php\n// @mago-expect lint:some-rule(1)\n\techo 1;", myFixture.editor.document.text)
+        assertEquals("<?php\n// @mago-expect lint:some-rule\n\techo 1;", myFixture.editor.document.text)
     }
 
     fun testPlannerPreservesCrLf() {
@@ -83,7 +83,7 @@ class MagoSuppressActionTest : BasePlatformTestCase() {
         val offset = text.indexOf("echo")
         val diagnostic = MagoDiagnosticReport.Diagnostic(TextRange(offset, offset + 4), "issue", "some-rule", "warning")
         val (at, insertion) = MagoSuppressAction.plan(text, diagnostic, MagoSuppressAction.Mode.EXPECT) { true }!!
-        assertEquals("<?php\r\n  // @mago-expect lint:some-rule(1)\r\n  echo 1;\r\n",
+        assertEquals("<?php\r\n  // @mago-expect lint:some-rule\r\n  echo 1;\r\n",
             text.substring(0, at) + insertion + text.substring(at))
     }
 
@@ -119,7 +119,7 @@ class MagoSuppressActionTest : BasePlatformTestCase() {
         val intention = action(text, marker = "'hello'")
         assertTrue(intention.isAvailable(project, myFixture.editor, myFixture.file))
         myFixture.launchAction(intention)
-        assertEquals("<?php\n// @mago-expect lint:some-rule(1)\n\$value = 'hello';", myFixture.editor.document.text)
+        assertEquals("<?php\n// @mago-expect lint:some-rule\n\$value = 'hello';", myFixture.editor.document.text)
     }
 
     fun testDocumentedFunctionKeepsDocblockAttached() {
@@ -128,22 +128,22 @@ class MagoSuppressActionTest : BasePlatformTestCase() {
         val intention = action(text, marker = "function")
         assertTrue(intention.isAvailable(project, myFixture.editor, myFixture.file))
         myFixture.launchAction(intention)
-        assertEquals("<?php\n    // @mago-expect lint:some-rule(1)\n    /**\n     * Documentation.\n     */\n    function example() {}",
+        assertEquals("<?php\n    // @mago-expect lint:some-rule\n    /**\n     * Documentation.\n     */\n    function example() {}",
             myFixture.editor.document.text)
     }
 
     fun testRepeatedAndMixedPragmasAreStacked() {
-        val text = "<?php\n// @mago-expect lint:some-rule(1)\necho 1;"
+        val text = "<?php\n// @mago-expect lint:some-rule\necho 1;"
         myFixture.configureByText("Sample.php", text)
         val next = action(text, mode = MagoSuppressAction.Mode.IGNORE)
         assertTrue(next.isAvailable(project, myFixture.editor, myFixture.file))
         myFixture.launchAction(next)
-        val updated = "<?php\n// @mago-expect lint:some-rule(1)\n// @mago-ignore lint:some-rule(1)\necho 1;"
+        val updated = "<?php\n// @mago-expect lint:some-rule\n// @mago-ignore lint:some-rule\necho 1;"
         assertEquals(updated, myFixture.editor.document.text)
         val repeated = action(updated)
         assertTrue(repeated.isAvailable(project, myFixture.editor, myFixture.file))
         myFixture.launchAction(repeated)
-        assertEquals(updated.replace("echo 1;", "// @mago-expect lint:some-rule(1)\necho 1;"),
+        assertEquals(updated.replace("echo 1;", "// @mago-expect lint:some-rule\necho 1;"),
             myFixture.editor.document.text)
     }
 

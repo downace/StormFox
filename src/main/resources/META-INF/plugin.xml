@@ -6,7 +6,6 @@
     <description><![CDATA[
     <p><a href="https://mago.carthage.software/">Mago</a> integration for PHP: format code, lint style and code quality, and analyze types and logic using your project's Mago configuration.</p>
     <p>
-        Tested with Mago 1.59.0–1.60.1.
         Feel free to <a href="https://github.com/downace/StormFox/issues">report issues</a> if you encounter errors or need more features.
     </p>
     <h3>Features</h3>

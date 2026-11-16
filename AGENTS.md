@@ -24,6 +24,11 @@
   **Open settings** action.
 * **Naming:** the plugin is StormFox, the tool is **Mago** in prose and in the UI. The binary and its
   command stay lowercase: `mago`, `mago format`, `mago.toml`.
+* **Mago compatibility is shown in settings, not as a tested-version window in published descriptions.**
+  Support starts at 1.18.0 (stdin diagnostics); versions before 1.25.0 format stdin without
+  filepath-aware exclusions, so settings warn about that trade-off. Preserve legacy report formats:
+  an empty exit-0 diagnostic response is valid, and fix replacements may be strings or UTF-8 byte
+  arrays. Suppression pragmas use bare rule codes, which also work before count suffixes existed.
 * **One id:** `com.github.downace.stormfox`, root package the same.
 * **Supported IDEs: PhpStorm 2024.3 and newer** (`since-build=243`, no `until-build`). The plugin
   uses no platform API newer than 2024.3, with one exception: `prepareForFormatting` — the hook that

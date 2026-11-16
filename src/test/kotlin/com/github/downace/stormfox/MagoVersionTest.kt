@@ -59,6 +59,48 @@ class MagoVersionTest : BasePlatformTestCase() {
         }
     }
 
+    fun testBinaryValidationReportsCompatibilityForDetectedVersions() {
+        val root = Files.createTempDirectory("mago-version-validation").toFile()
+        val source = root.resolve("VersionStub.java")
+        val java = java.io.File(System.getProperty("java.home"), "bin/java").absolutePath
+        val command = "\"$java\" \"${source.absolutePath}\""
+        try {
+            val cases = listOf(
+                "1.17.0" to false,
+                "1.18.0" to true,
+                "1.24.9" to true,
+                "1.25.0" to false,
+                "1.60.2" to false,
+                "2.0.0" to false,
+            )
+            for ((version, expectsWarning) in cases) {
+                val output = "mago $version"
+                val stream = if (version == "1.18.0") "System.err" else "System.out"
+                source.writeText(
+                    """
+                    public class VersionStub {
+                        public static void main(String[] args) {
+                            $stream.println("$output");
+                        }
+                    }
+                    """.trimIndent(),
+                )
+
+                val result = MagoValidation.checkBinaryUncached(command, root)
+                if (version == "1.17.0") {
+                    assertTrue("$version should be rejected, got $result", result is MagoValidation.Result.Failure)
+                    assertTrue((result as MagoValidation.Result.Failure).message.contains("1.18.0"))
+                } else {
+                    assertTrue("$version should succeed, got $result", result is MagoValidation.Result.Success)
+                    assertEquals("$version warning mismatch", expectsWarning, (result as MagoValidation.Result.Success).warning != null)
+                }
+            }
+        } finally {
+            source.delete()
+            root.delete()
+        }
+    }
+
     fun testRefreshOnlyProbesOpenDirectoriesAndCoalescesSettings() {
         val state = MagoSettings.getInstance().state
         val oldPath = state.magoPath
@@ -132,12 +174,16 @@ class MagoVersionTest : BasePlatformTestCase() {
         }
     }
 
-    fun testReleaseParsingAndTestedBounds() {
+    fun testReleaseParsingAndCompatibilityBounds() {
         assertEquals(MagoVersion(1, 59, 0), MagoVersion.parse("mago 1.59.0"))
-        assertTrue(MagoVersion.parse("Mago v1.60.1")!!.isTested)
-        assertTrue(MagoVersion.parse("mago 1.59.0")!!.isTested)
-        assertFalse(MagoVersion.parse("mago 1.58.9")!!.isTested)
-        assertFalse(MagoVersion.parse("mago 1.60.2")!!.isTested)
+        assertFalse(MagoVersion(1, 17, 9).isSupported)
+        assertTrue(MagoVersion(1, 18, 0).isSupported)
+        assertTrue(MagoVersion(1, 24, 9).isSupported)
+        assertFalse(MagoVersion(1, 24, 9).supportsFilepathAwareExcludes)
+        assertTrue(MagoVersion(1, 25, 0).supportsFilepathAwareExcludes)
+        assertTrue(MagoVersion.parse("Mago v1.60.1")!!.supportsFilepathAwareExcludes)
+        assertTrue(MagoVersion.parse("mago 1.60.2")!!.isSupported)
+        assertTrue(MagoVersion(2, 0, 0).isSupported)
         assertNull(MagoVersion.parse("mago 1.60.1-beta"))
         assertNull(MagoVersion.parse("unrelated 1.60.1"))
         assertNull(MagoVersion.parse("mago 999999999999999999999.1.0"))

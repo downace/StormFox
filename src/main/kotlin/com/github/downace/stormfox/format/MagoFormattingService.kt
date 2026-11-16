@@ -8,6 +8,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
 import com.intellij.psi.PsiFile
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.MagoVersionService
 import java.io.File
 
 class MagoFormattingService : AsyncDocumentFormattingService() {
@@ -73,7 +74,8 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         private val originalText: String,
         private val executionRoot: String = "",
         private val format: (MagoRunner.Cancellation) -> MagoRunner.Result = { cancellation ->
-            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot)
+            val version = MagoVersionService.getInstance().cachedVersion(binary, workingDirectory, executionRoot)
+            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot, version)
         },
     ) : AsyncDocumentFormattingService.FormattingTask {
 

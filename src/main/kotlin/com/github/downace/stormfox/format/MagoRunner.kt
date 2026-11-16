@@ -1,6 +1,7 @@
 package com.github.downace.stormfox.format
 
 import com.github.downace.stormfox.MagoExecutionContext
+import com.github.downace.stormfox.MagoVersion
 import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
@@ -70,11 +71,20 @@ internal object MagoRunner {
         text: String,
         cancellation: Cancellation = Cancellation(),
         executionRoot: String = "",
+        cachedVersion: MagoVersion? = null,
     ): Result {
         cancellation.checkCanceled()
+        val context = try {
+            MagoExecutionContext(binary, workingDirectory, executionRoot).also { it.command() }
+        } catch (e: IllegalArgumentException) {
+            return Result.Failure(e.message ?: "Invalid Mago command")
+        }
+        val version = cachedVersion ?: when (val probe = probeVersion(context, workingDirectory, cancellation)) {
+            is VersionResult.Known -> probe.version
+            is VersionResult.Failure -> return Result.Failure(probe.message)
+        }
         val arguments = try {
-            val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
-            buildArguments(context, configPath, logicalPath)
+            buildArguments(context, configPath, logicalPath, version)
         } catch (e: IllegalArgumentException) {
             return Result.Failure(e.message ?: "Invalid Mago command")
         }
@@ -132,14 +142,53 @@ internal object MagoRunner {
         }
     }
 
-    private fun buildArguments(context: MagoExecutionContext, configPath: String, logicalPath: String): List<String> {
+    private sealed interface VersionResult {
+        data class Known(val version: MagoVersion) : VersionResult
+        data class Failure(val message: String) : VersionResult
+    }
+
+    private fun probeVersion(context: MagoExecutionContext, directory: File?, cancellation: Cancellation): VersionResult {
+        cancellation.checkCanceled()
+        val commandLine = GeneralCommandLine(context.command() + "--version").withCharset(StandardCharsets.UTF_8)
+        if (directory != null) commandLine.withWorkDirectory(directory)
+        val handler = try {
+            CapturingProcessHandler(commandLine)
+        } catch (e: ExecutionException) {
+            return VersionResult.Failure("Cannot start mago: ${e.message}")
+        }
+        return try {
+            cancellation.attach(handler.process)
+            handler.processInput.close()
+            val output = handler.runProcess(TIMEOUT_MS, true)
+            cancellation.checkCanceled()
+            when {
+                output.isTimeout -> VersionResult.Failure("mago did not finish within ${TIMEOUT_MS / 1000} seconds")
+                output.exitCode != 0 -> VersionResult.Failure(errorMessage(output.stderr, output.exitCode))
+                else -> MagoVersion.parse(output.stdout + "\n" + output.stderr)?.let { VersionResult.Known(it) }
+                    ?: VersionResult.Failure("Cannot determine Mago version from --version output")
+            }
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            VersionResult.Failure("mago failed: ${e.message ?: e.toString()}")
+        } finally {
+            terminateMagoProcess(handler)
+        }
+    }
+
+    private fun buildArguments(context: MagoExecutionContext, configPath: String, logicalPath: String, version: MagoVersion): List<String> {
         val arguments = mutableListOf<String>()
         if (configPath.isNotBlank()) {
             // Global flags have to come before the subcommand.
             arguments += "--config"
             arguments += context.toExecution(configPath)
         }
-        arguments += listOf("format", "--stdin-input", "--stdin-filepath", context.toExecution(logicalPath))
+        arguments += listOf("format", "--stdin-input")
+        if (version.supportsFilepathAwareExcludes) {
+            arguments += listOf("--stdin-filepath", context.toExecution(logicalPath))
+        }
         return context.command() + arguments
     }
 

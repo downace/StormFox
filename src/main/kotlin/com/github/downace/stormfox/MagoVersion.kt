@@ -7,9 +7,16 @@ internal data class MagoVersion(val major: Int, val minor: Int, val patch: Int) 
 
     override fun toString(): String = "$major.$minor.$patch"
 
-    val isTested: Boolean get() = this >= MagoVersion(1, 59, 0) && this <= MagoVersion(1, 60, 1)
+    /** Versions before 1.18.0 do not support reading unsaved buffers for diagnostics. */
+    val isSupported: Boolean get() = this >= MINIMUM_SUPPORTED
+
+    /** Filepath-aware formatter excludes are available starting with Mago 1.25.0. */
+    val supportsFilepathAwareExcludes: Boolean get() = this >= FILEPATH_AWARE_EXCLUDES
 
     companion object {
+        private val MINIMUM_SUPPORTED = MagoVersion(1, 18, 0)
+        private val FILEPATH_AWARE_EXCLUDES = MagoVersion(1, 25, 0)
+
         private val VERSION = Regex("""(?i)\bmago\s+v?(\d+)\.(\d+)\.(\d+)(?![\w.+-])""")
 
         fun parse(output: String): MagoVersion? {

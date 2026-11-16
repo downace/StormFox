@@ -1,9 +1,27 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.lint.MagoDiagnosticRunner
+import com.github.downace.stormfox.lint.MagoTool
 import junit.framework.TestCase
+import java.io.File
 
 class MagoDiagnosticRunnerTest : TestCase() {
+    fun testBlankSuccessfulReportsRetainWarnings() {
+        for (stdout in listOf("", " \r\n\t")) {
+            val result = MagoDiagnosticRunner.parseOutput(stdout, "WARN tool warning", 0, "WARN source warning",
+                "", "source.php", File("."), MagoTool.GUARD) as MagoDiagnosticRunner.Result.Success
+            assertEquals(emptyList<Any>(), result.diagnostics)
+            assertEquals(listOf("source warning", "tool warning"), result.warnings)
+        }
+    }
+
+    fun testBlankFindingsExitAndMalformedOutputFail() {
+        for ((stdout, exit) in listOf("" to 1, " \n" to 1, "not json" to 0)) {
+            assertTrue(MagoDiagnosticRunner.parseOutput(stdout, "", exit, "", "", "source.php",
+                File("."), MagoTool.LINT) is MagoDiagnosticRunner.Result.Failure)
+        }
+    }
+
     fun testGuardSkippedChecksSample() {
         val stderr = """
              WARN Perimeter guard checks were skipped due to missing configuration.

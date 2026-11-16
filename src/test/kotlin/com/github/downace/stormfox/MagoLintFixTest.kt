@@ -29,6 +29,16 @@ class MagoLintFixTest {
         assertEquals("!", parse(batch(edit(0, 0, "!")), "").fix!!.text)
     }
 
+    @Test fun supportsLegacyStringReplacements() {
+        val legacy = edit(0, 2, "Ж").replace("[208, 150]", "\"Ж\"")
+        val fix = parse(batch(legacy, edit(2, 6, "😁", "unsafe")), "Я😀").fix!!
+        assertEquals("Ж😁", fix.text)
+        assertEquals(MagoLintReport.Safety.UNSAFE, fix.safety)
+        assertEquals(listOf(MagoLintReport.Edit(0, 1, "Ж"),
+            MagoLintReport.Edit(1, 3, "😁", MagoLintReport.Safety.UNSAFE)), fix.edits)
+        assertEquals("abc", parse(batch(edit(0, 0, "").replace("[]", "\"\""))).fix!!.text)
+    }
+
     @Test fun coincidentAndBoundaryInsertionsPreserveOrder() {
         assertEquals("a12X34c", parse(batch(edit(1, 1, "1"), edit(1, 2, "X"), edit(1, 1, "2"), edit(2, 2, "3"), edit(2, 2, "4"))).fix!!.text)
     }
@@ -43,6 +53,8 @@ class MagoLintFixTest {
             batch(valid, edit(0, 0, "x").replace("[120]", "[255]")),
             batch(valid, edit(0, 0, "x").replace("[120]", "[256]")),
             batch(valid, edit(0, 0, "x").replace("[120]", "[1.5]")),
+            batch(valid, edit(0, 0, "x").replace("[120]", "123")),
+            batch(valid, edit(0, 0, "x").replace("[120]", "null")),
             batch(valid, "{}"), "{}", "null", "[]", batch(),
             """[[{"name":"source.php"},[$valid]],[{"path":"other.php"},[$valid]]]""",
         )

@@ -152,14 +152,18 @@ internal object MagoDiagnosticReport {
                         else -> error("Unknown edit safety")
                     }
                     if (level.ordinal > safety.ordinal) safety = level
-                    val bytes = edit.get("new_text")
-                    require(bytes.isJsonArray)
-                    val replacement = bytes.asJsonArray.map { byte ->
-                        val number = integer(byte)
-                        require(number in 0..255)
-                        number.toByte()
-                    }.toByteArray()
-                    val decoded = Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(replacement)).toString()
+                    val replacement = edit.get("new_text")
+                    val decoded = if (replacement.isJsonPrimitive && replacement.asJsonPrimitive.isString) {
+                        replacement.asString
+                    } else {
+                        require(replacement.isJsonArray)
+                        val bytes = replacement.asJsonArray.map { byte ->
+                            val number = integer(byte)
+                            require(number in 0..255)
+                            number.toByte()
+                        }.toByteArray()
+                        Charsets.UTF_8.newDecoder().decode(java.nio.ByteBuffer.wrap(bytes)).toString()
+                    }
                     edits.add(Edit(offsets[start], offsets[end], decoded, level))
                 }
             }

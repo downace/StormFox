@@ -38,7 +38,7 @@ internal object MagoDiagnosticRunner {
     }
 
     private sealed interface ProcessResult {
-        data class Success(val stdout: String, val stderr: String) : ProcessResult
+        data class Success(val stdout: String, val stderr: String, val exitCode: Int) : ProcessResult
         data class Failure(val message: String) : ProcessResult
     }
 
@@ -94,18 +94,29 @@ internal object MagoDiagnosticRunner {
         val output = execute(arguments, workingDirectory, text, 0..1, indicator, tool.timeoutMillis)
         if (output is ProcessResult.Failure) return Result.Failure(output.message)
         output as ProcessResult.Success
+        return parseOutput(output.stdout, output.stderr, output.exitCode, source.stderr, text, logicalPath, workspace, tool) {
+            if (executionRoot.isBlank()) it else context.toHost(it, context.toExecution(workspace.path))
+        }
+    }
+
+    internal fun parseOutput(stdout: String, stderr: String, exitCode: Int, sourceStderr: String, text: String,
+                             logicalPath: String, workspace: File, tool: MagoTool,
+                             mapPath: (String) -> String = { it }): Result {
+        if (stdout.isBlank()) {
+            return if (exitCode == 0) Result.Success(emptyList(), warningsFromStderr(sourceStderr, stderr))
+            else failure("Mago ${tool.command} returned an empty JSON report (exit $exitCode)", details = stderr)
+        }
         return try {
-            val executionWorkspace = if (executionRoot.isBlank()) "" else context.toExecution(workspace.path)
-            val diagnostics = MagoDiagnosticReport.parse(output.stdout, text, logicalPath, workspace, tool) {
-                if (executionRoot.isBlank()) it else context.toHost(it, executionWorkspace)
-            }
-            Result.Success(diagnostics, warningsFromStderr(source.stderr, output.stderr))
+            val diagnostics = MagoDiagnosticReport.parse(stdout, text, logicalPath, workspace, tool, mapPath)
+            Result.Success(diagnostics, warningsFromStderr(sourceStderr, stderr))
         } catch (e: com.google.gson.JsonParseException) {
-            failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, output.stdout + "\n" + output.stderr)
+            failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, stdout + "\n" + stderr)
+        } catch (e: IOException) {
+            failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, stdout + "\n" + stderr)
         } catch (e: IllegalArgumentException) {
-            failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, output.stdout + "\n" + output.stderr)
+            failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, stdout + "\n" + stderr)
         } catch (e: IllegalStateException) {
-            failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, output.stdout + "\n" + output.stderr)
+            failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, stdout + "\n" + stderr)
         }
     }
 
@@ -154,7 +165,7 @@ internal object MagoDiagnosticRunner {
             if (output.exitCode !in validExitCodes) {
                 return processFailure("Mago failed (exit ${output.exitCode}): ${output.stderr.trim().ifEmpty { "No diagnostics returned" }}")
             }
-            return ProcessResult.Success(output.stdout, output.stderr)
+            return ProcessResult.Success(output.stdout, output.stderr, output.exitCode)
         } finally {
             terminateMagoProcess(handler)
             writer.cancel(true)

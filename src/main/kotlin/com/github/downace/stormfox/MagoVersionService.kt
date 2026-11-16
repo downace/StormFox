@@ -41,6 +41,11 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
         return synchronized(this) { entries[context]?.version }
     }
 
+    fun cachedVersion(command: String, directory: File?, root: String): MagoVersion? {
+        val context = key(command, directory, root)
+        return synchronized(this) { entries[context]?.version }
+    }
+
     /** Invalidate immediately, then coalesce settings changes before probing open projects. */
     fun refresh(snapshot: MagoSettingsSnapshot) {
         val binaryPath = snapshot.command
