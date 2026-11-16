@@ -25,6 +25,37 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 class MagoDiagnosticServiceTest : BasePlatformTestCase() {
+    fun testGuardWarningsAnnotateEmptyPhpAndOfferAllActions() {
+        myFixture.configureByText("Empty.php", "")
+        myFixture.enableInspections(MagoLintInspection(), MagoAnalyzeInspection(), MagoGuardInspection())
+        val snapshot = MagoDiagnosticAnnotator.Snapshot(
+            myFixture.file.text, myFixture.file.virtualFile.path, File("."), "mago", "",
+        )
+        val report = MagoDiagnosticAnnotator.Report(
+            snapshot, MagoDiagnosticRunner.Result.Success(emptyList(), listOf("Guard checks skipped: missing configuration.")),
+        )
+        val holder = annotated(MagoGuardAnnotator(), report)
+        val warning = holder.single { it.message?.contains("Guard checks skipped") == true }
+        assertEquals(com.intellij.lang.annotation.HighlightSeverity.WARNING, warning.severity)
+        assertTrue(warning.isFileLevelAnnotation)
+        val fixes = warning.quickFixes!!.map { it.quickFix.text }
+        assertEquals(
+            listOf("Open Mago config", "Open inspection settings", "Disable inspection"),
+            fixes,
+        )
+        val actions = warning.quickFixes!!.map { it.quickFix }
+        actions.forEach {
+            assertTrue(it.isAvailable(project, myFixture.editor, myFixture.file))
+            assertFalse(it.startInWriteAction())
+            assertEquals(com.intellij.codeInsight.intention.preview.IntentionPreviewInfo.EMPTY,
+                it.generatePreview(project, myFixture.editor, myFixture.file))
+        }
+        actions.last().invoke(project, myFixture.editor, myFixture.file)
+        assertNull(MagoDiagnosticAnnotator.inspection(myFixture.file, MagoTool.GUARD))
+        assertNotNull(MagoDiagnosticAnnotator.inspection(myFixture.file, MagoTool.LINT))
+        assertNotNull(MagoDiagnosticAnnotator.inspection(myFixture.file, MagoTool.ANALYZE))
+    }
+
     private data class Worker(val tool: MagoTool, val snapshot: MagoSnapshot,
                               val gate: CompletableDeferred<MagoDiagnosticRunner.Result>)
 

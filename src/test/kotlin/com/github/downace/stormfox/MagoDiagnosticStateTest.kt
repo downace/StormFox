@@ -21,11 +21,12 @@ class MagoDiagnosticStateTest : TestCase() {
             gates.last().complete(MagoLintRunner.Result.Success(listOf(diagnostic)))
             state.edited("f", 0, 0, 1, "xabcdef", 20)
             state.requestView("f", MagoTool.LINT, original.copy(text = "xabcdef", revision = 20))
-            gates.last().complete(MagoLintRunner.Result.Success(listOf(diagnostic.copy(range = TextRange(3, 5)))))
+            gates.last().complete(MagoLintRunner.Result.Success(listOf(diagnostic.copy(range = TextRange(3, 5))), listOf("Skipped check")))
             state.edited("f", 0, 1, 0, "abcdef", 30)
             val view = state.requestView("f", MagoTool.LINT, original, verifiedCurrent = true)!!
             assertTrue(view.retained)
             assertEquals(TextRange(2, 4), (view.result as MagoLintRunner.Result.Success).diagnostics.single().range)
+            assertEquals(listOf("Skipped check"), (view.result as MagoLintRunner.Result.Success).warnings)
             val worker = gates.last()
             assertNull(state.requestView("f", MagoTool.LINT, original.copy(text = "stale!", revision = 9)))
             assertFalse(worker.isCompleted)
@@ -61,7 +62,7 @@ class MagoDiagnosticStateTest : TestCase() {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val state = MagoDiagnosticState<String>(scope, { tool, _ ->
             if (tool == MagoTool.GUARD) MagoLintRunner.Result.Failure("failure")
-            else MagoLintRunner.Result.Success(listOf(MagoDiagnosticReport.Diagnostic(TextRange(0, 1), "problem", null, "Warning")))
+            else MagoLintRunner.Result.Success(listOf(MagoDiagnosticReport.Diagnostic(TextRange(0, 1), "problem", null, "Warning")), listOf("Skipped check"))
         }, { _, _, _ -> }, debounceMillis = 0)
         try {
             val original = snapshot()
@@ -73,6 +74,8 @@ class MagoDiagnosticStateTest : TestCase() {
             assertTrue(state.isCurrent("saved", MagoTool.LINT, rebased))
             assertTrue(state.isCurrent("saved", MagoTool.ANALYZE, rebased))
             assertFalse(state.isCurrent("saved", MagoTool.GUARD, rebased))
+            assertEquals(listOf("Skipped check"),
+                (state.requestView("saved", MagoTool.LINT, rebased)!!.result as MagoLintRunner.Result.Success).warnings)
             // No fallback survives mismatched document, settings or generation.
             state.invalidateForSave("saved", "wrong", 1, 1, 2, "mago", "", emptyMap())
             assertFalse(state.isCurrent("saved", MagoTool.LINT, rebased))
@@ -173,22 +176,25 @@ class MagoDiagnosticStateTest : TestCase() {
         try {
             val original = snap("0123456789", 1)
             state.requestView("f", MagoTool.LINT, original)
-            gates[0].complete(MagoLintRunner.Result.Success(listOf(diag(2, 4), diag(6, 9))))
+            gates[0].complete(MagoLintRunner.Result.Success(listOf(diag(2, 4), diag(6, 9)), listOf("Skipped check")))
             state.edited("f", 0, 0, 1, "x0123456789", 2)
             val second = snap("x0123456789", 2)
             val retained = state.requestView("f", MagoTool.LINT, second)!!
             assertTrue(retained.retained)
+            assertEquals(listOf("Skipped check"), (retained.result as MagoLintRunner.Result.Success).warnings)
             assertEquals(listOf(TextRange(3, 5), TextRange(7, 10)),
                 (retained.result as MagoLintRunner.Result.Success).diagnostics.map { it.range })
             state.edited("f", 5, 0, 1, "x0123y456789", 3)
             val third = snap("x0123y456789", 3)
             val next = state.requestView("f", MagoTool.LINT, third)!!
+            assertEquals(listOf("Skipped check"), (next.result as MagoLintRunner.Result.Success).warnings)
             assertEquals(listOf(TextRange(8, 11)), (next.result as MagoLintRunner.Result.Success).diagnostics.map { it.range })
             assertFalse(state.isCurrentView("f", MagoTool.LINT, second, retained))
             gates.last().complete(MagoLintRunner.Result.Success(emptyList()))
             val fresh = state.requestView("f", MagoTool.LINT, third)!!
             assertFalse(fresh.retained)
             assertTrue((fresh.result as MagoLintRunner.Result.Success).diagnostics.isEmpty())
+            assertTrue((fresh.result as MagoLintRunner.Result.Success).warnings.isEmpty())
         } finally { state.dispose(); scope.cancel() }
     }
 

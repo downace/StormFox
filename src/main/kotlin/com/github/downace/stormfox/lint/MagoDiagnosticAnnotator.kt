@@ -101,10 +101,21 @@ open class MagoDiagnosticAnnotator(
         fun AnnotationBuilder.registerFix(action: ModCommandAction) {
             newFix(action).key(key).registerFix()
         }
+        fun AnnotationBuilder.registerFix(action: IntentionAction) {
+            newFix(action).key(key).registerFix()
+        }
         fun annotation(message: String, level: HighlightSeverity = severity) = holder.newAnnotation(level, "Mago: $message")
         when (val result = annotationResult.result) {
             is MagoDiagnosticRunner.Result.Failure -> annotation(result.message).fileLevel().create()
             is MagoDiagnosticRunner.Result.Success -> {
+                result.warnings.takeIf { it.isNotEmpty() }?.let { warnings ->
+                    val message = warnings.joinToString(" ")
+                    val builder = annotation(message, HighlightSeverity.WARNING).fileLevel()
+                    builder.registerFix(MagoWarningOpenConfigAction(source))
+                    builder.registerFix(MagoWarningInspectionSettingsAction(source))
+                    builder.registerFix(MagoWarningDisableInspectionAction(source))
+                    builder.create()
+                }
                 if (annotationResult.retained) {
                     result.diagnostics.forEach {
                         val message = it.summary + (it.code?.let { code -> " [$code]" } ?: "")

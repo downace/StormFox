@@ -17,6 +17,31 @@ import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
 
 class MagoGuardInspectionTest : BasePlatformTestCase() {
+    fun testOptionalCliReturnsSkippedGuardWarningsWithEmptyDiagnostics() {
+        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
+        val directory = Files.createTempDirectory("stormfox-guard-warnings-")
+        val sourceDirectory = Files.createDirectory(directory.resolve("src"))
+        val path = sourceDirectory.resolve("Sample.php")
+        val config = directory.resolve("mago.toml")
+        try {
+            val text = "<?php namespace App; final class Sample {}"
+            Files.writeString(path, text)
+            Files.writeString(config, "[source]\npaths = ['src']\n")
+            val result = MagoDiagnosticRunner.run(binary, directory.toFile(), config.toString(), path.toString(),
+                text, MagoTool.GUARD)
+            assertTrue("Expected successful guard result, got $result", result is MagoDiagnosticRunner.Result.Success)
+            result as MagoDiagnosticRunner.Result.Success
+            assertEmpty(result.diagnostics)
+            assertTrue("Expected skipped guard warnings, got ${result.warnings}",
+                result.warnings.any { it.contains("guard checks were skipped", ignoreCase = true) })
+        } finally {
+            Files.deleteIfExists(path)
+            Files.deleteIfExists(config)
+            Files.deleteIfExists(sourceDirectory)
+            Files.deleteIfExists(directory)
+        }
+    }
+
     fun testOptionalCliHonorsStructuralConfigurationAndReadsSnapshotWithoutWriting() {
         val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
         val directory = Files.createTempDirectory("stormfox-guard-cli-")

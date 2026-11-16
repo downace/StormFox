@@ -142,7 +142,7 @@ internal class MagoDiagnosticState<K>(
                         diagnostic.copy(range = TextRange(start + shift, end + shift))
                     }
                 }
-                slot.view = View(MagoDiagnosticRunner.Result.Success(diagnostics), true, slot.id)
+                slot.view = View(success.copy(diagnostics = diagnostics), true, slot.id)
                 trace("edit-retain ${details(slot, tool)} previousSlot=${old.id} count=${diagnostics.size}")
             }
             slots[tool] = slot

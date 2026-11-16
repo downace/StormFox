@@ -33,7 +33,7 @@ internal object MagoDiagnosticRunner {
     private val log = Logger.getInstance(MagoDiagnosticRunner::class.java)
 
     sealed interface Result {
-        data class Success(val diagnostics: List<MagoDiagnosticReport.Diagnostic>) : Result
+        data class Success(val diagnostics: List<MagoDiagnosticReport.Diagnostic>, val warnings: List<String> = emptyList()) : Result
         data class Failure(val message: String) : Result
     }
 
@@ -96,9 +96,10 @@ internal object MagoDiagnosticRunner {
         output as ProcessResult.Success
         return try {
             val executionWorkspace = if (executionRoot.isBlank()) "" else context.toExecution(workspace.path)
-            Result.Success(MagoDiagnosticReport.parse(output.stdout, text, logicalPath, workspace, tool) {
+            val diagnostics = MagoDiagnosticReport.parse(output.stdout, text, logicalPath, workspace, tool) {
                 if (executionRoot.isBlank()) it else context.toHost(it, executionWorkspace)
-            })
+            }
+            Result.Success(diagnostics, warningsFromStderr(source.stderr, output.stderr))
         } catch (e: com.google.gson.JsonParseException) {
             failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, output.stdout + "\n" + output.stderr)
         } catch (e: IllegalArgumentException) {
@@ -107,6 +108,19 @@ internal object MagoDiagnosticRunner {
             failure("Mago ${tool.command} returned an invalid JSON report: ${e.message}", e, output.stdout + "\n" + output.stderr)
         }
     }
+
+    private val ansiEscape = Regex("\u001B\\[[0-?]*[ -/]*[@-~]")
+    private val warningLine = Regex(
+        """^\s*(?:(?:\d{4}-\d{2}-\d{2}[T ]\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:?\d{2})?)\s+)?WARN(?:\s+|:\s*)(.*)$"""
+    )
+    private val logTarget = Regex("""^mago(?:::[A-Za-z_][A-Za-z0-9_]*)+:\s+""")
+
+    internal fun warningsFromStderr(vararg streams: String): List<String> =
+        streams.asSequence().flatMap { ansiEscape.replace(it, "").lineSequence() }
+            .mapNotNull { line ->
+                warningLine.matchEntire(line)?.groupValues?.get(1)
+                    ?.replaceFirst(logTarget, "")?.trim()?.takeIf { it.isNotEmpty() }
+            }.distinct().toList()
 
     private fun execute(arguments: List<String>, workingDirectory: File, text: String, validExitCodes: IntRange,
                         workerIndicator: ProgressIndicator?, timeoutMillis: Int): ProcessResult {
