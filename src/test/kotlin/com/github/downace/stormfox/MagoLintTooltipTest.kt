@@ -33,6 +33,7 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
                     assertEquals(1, Regex(Regex.escape(message)).findAll(compact).count())
                     assertNull(MagoLintTooltip.expanded(diagnostic))
                     assertFalse(compact.contains("Details"))
+                    assertTrue(compact.contains("Open Mago config"))
                 }
             }
         }
@@ -58,6 +59,7 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         assertFalse(details.contains("<b>Help</b>"))
         assertEquals(1, "Use the callable syntax.".toRegex().findAll(details).count())
         assertTrue(details.contains("Rule documentation"))
+        assertTrue(details.contains("Open Mago config"))
     }
 
     fun testTopLevelMessageIsFallbackAndNotRepeatedInDetails() {
@@ -106,6 +108,28 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         assertTrue(TooltipLinkHandlerEP.getDescription(ref, myFixture.editor)!!.contains("Extra help"))
         assertNull(TooltipLinkHandlerEP.getDescription("stormfox-mago-details:%%%", myFixture.editor))
         assertNull(TooltipLinkHandlerEP.getDescription("https://example.com", myFixture.editor))
+    }
+
+    fun testConfigLinkPayloadIsSafeAndStrictlyDecoded() {
+        for (source in com.github.downace.stormfox.lint.MagoTool.entries) {
+            val diagnostic = diagnostic(code = "odd rule/ code", help = "Details").copy(source = source)
+            val details = expanded(MagoLintTooltip.compact(diagnostic))
+            val ref = Regex("<a href=\\\"(stormfox-mago-config:[^\\\"]+)\\\">Open Mago config</a>")
+                .find(details)!!.groupValues[1]
+            assertEquals(source.command to "odd rule/ code", MagoLintTooltip.decodeConfig(ref.removePrefix(MagoLintTooltip.CONFIG_PREFIX)))
+        }
+        assertNull(MagoLintTooltip.decodeConfig("%%%"))
+        assertNull(MagoLintTooltip.decodeConfig(java.util.Base64.getUrlEncoder().encodeToString("unknown\u0000rule".toByteArray())))
+        assertTrue(expanded(MagoLintTooltip.compact(diagnostic(code = "any rule", help = "Details"))).contains("Rule documentation"))
+    }
+
+    fun testNoExtraDetailsStillOffersConfigLinkWithNoRuleCode() {
+        val noDetails = diagnostic(code = null, primary = "Issue message")
+        val compact = MagoLintTooltip.compact(noDetails)
+        assertNull(MagoLintTooltip.expanded(noDetails))
+        val ref = Regex("<a href=\\\"(stormfox-mago-config:[^\\\"]+)\\\">Open Mago config</a>")
+            .find(compact)!!.groupValues[1]
+        assertEquals("lint" to null, MagoLintTooltip.decodeConfig(ref.removePrefix(MagoLintTooltip.CONFIG_PREFIX)))
     }
 
     fun testTooltipFieldsAreEscapedAndRuleDocumentationIsLast() {

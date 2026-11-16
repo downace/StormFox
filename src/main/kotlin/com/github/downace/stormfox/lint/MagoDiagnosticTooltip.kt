@@ -5,12 +5,17 @@ import java.util.Base64
 
 internal object MagoDiagnosticTooltip {
     const val PREFIX = "stormfox-mago-details:"
+    const val CONFIG_PREFIX = "stormfox-mago-config:"
 
     fun compact(diagnostic: MagoDiagnosticReport.Diagnostic): String {
         val message = diagnostic.summary
         val code = diagnostic.code?.takeIf { it.isNotBlank() }?.let { " <code>${renderText(it)}</code>" }.orEmpty()
         val extra = expanded(diagnostic)
-        val details = if (extra == null) "" else " &nbsp; ${detailsLink(extra)}"
+        val links = buildList {
+            if (extra != null) add(detailsLink(extra))
+            else add(configLink(diagnostic.source.command, diagnostic.code?.takeIf { it.isNotBlank() }))
+        }.joinToString(" &nbsp; ")
+        val details = " &nbsp; $links"
         return "<html><b>Mago</b>: ${renderText(message)}$code$details</html>"
     }
 
@@ -40,6 +45,7 @@ internal object MagoDiagnosticTooltip {
             section("<p><a href=\"$url\">${source.documentationLabel}</a></p>")
         }
         if (!hasContent) return null
+        section("<p>${configLink(diagnostic.source.command, diagnostic.code?.takeIf { it.isNotBlank() })}</p>")
     }.let { "<html><body>$it</body></html>" }
 
     fun decode(refSuffix: String): String? {
@@ -51,8 +57,25 @@ internal object MagoDiagnosticTooltip {
     fun detailsUrl(html: String): String = PREFIX + Base64.getUrlEncoder().withoutPadding()
         .encodeToString(html.toByteArray(StandardCharsets.UTF_8))
 
+    fun configUrl(tool: String, code: String?): String {
+        val payload = listOf(tool, code ?: "").joinToString("\u0000")
+        return CONFIG_PREFIX + Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(payload.toByteArray(StandardCharsets.UTF_8))
+    }
+
+    fun decodeConfig(refSuffix: String): Pair<String, String?>? = runCatching {
+        val decoded = String(Base64.getUrlDecoder().decode(refSuffix), StandardCharsets.UTF_8)
+        val parts = decoded.split('\u0000')
+        if (parts.size != 2 || parts[0] !in MagoTool.entries.map { it.command } ||
+            parts[1].contains('\u0000')) return null
+        parts[0] to parts[1].ifEmpty { null }
+    }.getOrNull()
+
     private fun detailsLink(html: String): String =
         "<a href=\"${detailsUrl(html)}\">Details</a>"
+
+    private fun configLink(tool: String, code: String?): String =
+        "<a href=\"${configUrl(tool, code)}\">Open Mago config</a>"
 
     private fun renderText(value: String): String {
         val escaped = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")

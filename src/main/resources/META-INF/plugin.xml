@@ -47,6 +47,7 @@
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity implementation="com.github.downace.stormfox.MagoVersionProjectStartup"/>
         <codeInsight.linkHandler prefix="stormfox-mago-details:" handlerClass="com.github.downace.stormfox.lint.MagoDiagnosticTooltipLinkHandler"/>
+        <codeInsight.linkHandler prefix="stormfox-mago-config:" handlerClass="com.github.downace.stormfox.lint.MagoConfigTooltipLinkHandler"/>
         <localInspection language="PHP" shortName="MagoLint" displayName="Mago Linter validation"
                          groupPath="PHP" groupName="Quality tools" enabledByDefault="false" level="WARNING"
                          implementationClass="com.github.downace.stormfox.lint.MagoLintInspection"/>
