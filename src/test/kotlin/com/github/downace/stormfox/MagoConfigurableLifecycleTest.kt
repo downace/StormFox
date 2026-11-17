@@ -2,7 +2,9 @@ package com.github.downace.stormfox
 
 import com.github.downace.stormfox.settings.MagoConfigurable
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.status.MagoStatusBarWidget
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import javax.swing.JCheckBox
 import javax.swing.JTextField
 
 class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
@@ -56,6 +58,36 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
             assertFalse(configurable.isModified())
         } finally {
             state.executionRoot = originalRoot
+            configurable.disposeUIResources()
+        }
+    }
+
+    fun testStatusWidgetPreferenceParticipatesInResetApplyAndModifiedState() {
+        val configurable = MagoConfigurable(project)
+        val state = MagoSettings.getInstance().state
+        val original = state.showStatusWidget
+        try {
+            state.showStatusWidget = true
+            configurable.createComponent()
+            val ui = MagoConfigurable::class.java.getDeclaredField("ui").apply { isAccessible = true }.get(configurable)
+            val checkbox = ui.javaClass.getDeclaredField("showStatusWidgetCheckBox").apply { isAccessible = true }
+                .get(ui) as JCheckBox
+
+            assertTrue(checkbox.isSelected)
+            assertFalse(configurable.isModified())
+            checkbox.isSelected = false
+            assertTrue(configurable.isModified())
+            configurable.apply()
+            assertFalse(state.showStatusWidget)
+            assertFalse(configurable.isModified())
+
+            checkbox.isSelected = true
+            configurable.reset()
+            assertFalse(checkbox.isSelected)
+            assertFalse(configurable.isModified())
+        } finally {
+            state.showStatusWidget = original
+            MagoStatusBarWidget.refreshOpenProjects()
             configurable.disposeUIResources()
         }
     }

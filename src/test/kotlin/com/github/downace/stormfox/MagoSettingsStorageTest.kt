@@ -60,6 +60,7 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
         assertEquals(state.configPath, restored.configPath)
         assertEquals(state.executionRoot, restored.executionRoot)
         assertEquals(state.enabled, restored.enabled)
+        assertEquals(state.showStatusWidget, restored.showStatusWidget)
     }
 
     fun testPreviouslySavedSettingsLoad() {
@@ -78,6 +79,7 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
               <option name="configPath" value="/project/mago.toml" />
               <option name="executionRoot" value="/project" />
               <option name="enabled" value="false" />
+              <option name="showStatusWidget" value="false" />
               $callback
             </State>
             """.trimIndent(),
@@ -87,6 +89,7 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
         assertEquals("/project/mago.toml", state.configPath)
         assertEquals("/project", state.executionRoot)
         assertFalse(state.enabled)
+        assertFalse(state.showStatusWidget)
         assertNull(state.onPathChanged)
     }
 }

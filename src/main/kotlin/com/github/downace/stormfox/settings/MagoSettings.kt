@@ -40,6 +40,9 @@ class MagoSettings : PersistentStateComponent<MagoSettings.State> {
 
         @JvmField
         var enabled: Boolean = true
+
+        @JvmField
+        var showStatusWidget: Boolean = true
     }
 
     private var state = attach(State())

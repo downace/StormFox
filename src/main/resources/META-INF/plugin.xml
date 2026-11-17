@@ -45,6 +45,9 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <postStartupActivity implementation="com.github.downace.stormfox.MagoVersionProjectStartup"/>
+        <statusBarWidgetFactory implementation="com.github.downace.stormfox.status.MagoStatusBarWidgetFactory"
+                                id="com.github.downace.stormfox.MagoStatusBarWidget"
+                                order="first, before php.language.level.widget"/>
         <codeInsight.linkHandler prefix="stormfox-mago-details:" handlerClass="com.github.downace.stormfox.lint.MagoDiagnosticTooltipLinkHandler"/>
         <codeInsight.linkHandler prefix="stormfox-mago-config:" handlerClass="com.github.downace.stormfox.lint.MagoConfigTooltipLinkHandler"/>
         <localInspection language="PHP" shortName="MagoLint" displayName="Mago Linter validation"

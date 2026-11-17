@@ -63,15 +63,13 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
     private val log = Logger.getInstance(MagoDiagnosticService::class.java)
     internal fun trace(message: String) { log.info("Mago: diagnostics project=${project.name} $message") }
     private val workers = MagoTool.entries.associateWith { Semaphore(1) }
+    val activity = MagoDiagnosticActivity()
     @Volatile private var disposed = false
     internal val epoch: Long get() = generation.get()
     internal val state: MagoDiagnosticState<VirtualFile> = MagoDiagnosticState(scope, { tool, snapshot ->
-        val testCompute = computeForTest
-        if (testCompute != null) testCompute(tool, snapshot) else workers.getValue(tool).withPermit {
-            withMagoCancellation { indicator ->
-                MagoDiagnosticRunner.run(snapshot.binary, snapshot.workingDirectory, snapshot.configPath,
-                    snapshot.logicalPath, snapshot.text, tool, indicator, snapshot.executionRoot)
-            }
+        withMagoCancellation { indicator ->
+            MagoDiagnosticRunner.run(snapshot.binary, snapshot.workingDirectory, snapshot.configPath,
+                snapshot.logicalPath, snapshot.text, tool, indicator, snapshot.executionRoot)
         }
     }, { file, tool, snapshot ->
         ApplicationManager.getApplication().invokeLater {
@@ -88,7 +86,18 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
             trace("restart $details")
             DaemonCodeAnalyzer.getInstance(project).restart(psi)
         }
-    }, trace = { trace(it) })
+    }, trace = { trace(it) }, activity = activity, execute = { tool, snapshot, token, run ->
+        val testCompute = computeForTest
+        if (testCompute != null) {
+            activity.running(tool, snapshot.logicalPath, token)
+            testCompute(tool, snapshot)
+        } else {
+            workers.getValue(tool).withPermit {
+                activity.running(tool, snapshot.logicalPath, token)
+                run()
+            }
+        }
+    })
 
     internal fun <T> withCurrentReport(input: MagoDiagnosticAnnotator.Snapshot, tool: MagoTool,
                                        action: (MagoDiagnosticAnnotator.Report) -> T): T? =

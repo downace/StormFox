@@ -11,6 +11,14 @@
   and settings; `localInspection` and `externalAnnotator` handle diagnostics;
   `fileIconProvider` and `JavaScript.JsonSchema.ProviderFactory` support Mago configuration files.
   The plugin still registers no Actions on Save entry.
+* **Extension ordering must respect `first` groups.** The PHP language-level widget is `first`;
+  placing Mago before it requires `first, before php.language.level.widget`. A bare `before`
+  creates a sorting cycle and breaks dynamic installation. Exercise the platform sorter in tests:
+  Plugin Verifier does not detect these ordering conflicts.
+* **Settings navigation must respect page initialization.** The string overload of
+  `ShowSettingsUtil.showSettingsDialog` selects a display name, not a configurable ID.
+  Select Mago by its configurable class. Use the native inspection-settings action for a
+  specific inspection: the `showSettingsDialog` selection callback can run before its UI exists.
 * **The plugin never writes to a file.** Formatting and inspections read the editor buffer
   through stdin. Formatting returns the result to the document; inspections return diagnostics.
 * **Independent inspections, shared execution.** `MagoLint`, `MagoAnalyze` and `MagoGuard` keep separate

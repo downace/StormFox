@@ -28,6 +28,9 @@ internal class MagoDiagnosticState<K>(
     private val capacity: Int = 64,
     private val debounceMillis: Long = 300,
     private val trace: (String) -> Unit = {},
+    private val activity: MagoDiagnosticActivity? = null,
+    private val execute: suspend (MagoTool, MagoSnapshot, Long, suspend () -> MagoDiagnosticRunner.Result) -> MagoDiagnosticRunner.Result =
+        { _, _, _, run -> run() },
 ) {
     internal data class View(val result: MagoDiagnosticRunner.Result, val retained: Boolean, val slotId: Long)
     private class Slot(val snapshot: MagoSnapshot, val id: Long) {
@@ -79,24 +82,35 @@ internal class MagoDiagnosticState<K>(
             iterator.next().value.forEach { (evictedTool, evicted) ->
                 trace("cancel reason=capacity ${details(evicted, evictedTool)}")
                 evicted.job?.cancel(null)
+                activity?.invalidate(evictedTool, evicted.snapshot.logicalPath)
             }
             iterator.remove()
         }
         trace("request-start ${details(slot, tool)} view=${if (slot.view == null) "none" else "retained"}")
+        activity?.begin(tool, snapshot.logicalPath, slot.id)
         slot.job = scope.launch(start = CoroutineStart.LAZY) {
-            delay(debounceMillis)
-            trace("compute-start ${details(slot, tool)}")
-            val result = compute(tool, snapshot)
-            val publish = synchronized(this@MagoDiagnosticState) {
-                if (disposed || files[key]?.get(tool) !== slot) false
-                else { slot.view = View(result, false, slot.id); true }
+            try {
+                delay(debounceMillis)
+                trace("compute-start ${details(slot, tool)}")
+                val result = execute(tool, snapshot, slot.id) { compute(tool, snapshot) }
+                val publish = synchronized(this@MagoDiagnosticState) {
+                    if (disposed || files[key]?.get(tool) !== slot) false
+                    else {
+                        slot.view = View(result, false, slot.id)
+                        activity?.finish(tool, snapshot.logicalPath, slot.id, result)
+                        true
+                    }
+                }
+                trace("compute-${if (publish) "complete" else "drop"} ${details(slot, tool)} ${status(result)}")
+                if (publish) completed(key, tool, snapshot)
+            } finally {
+                activity?.finish(tool, snapshot.logicalPath, slot.id)
             }
-            trace("compute-${if (publish) "complete" else "drop"} ${details(slot, tool)} ${status(result)}")
-            if (publish) completed(key, tool, snapshot)
         }
         val job = slot.job!!
         job.invokeOnCompletion { cause ->
             if (cause != null) {
+                activity?.finish(tool, snapshot.logicalPath, slot.id)
                 synchronized(this@MagoDiagnosticState) {
                     if (slot.job === job) slot.job = null
                 }
@@ -116,6 +130,7 @@ internal class MagoDiagnosticState<K>(
         for ((tool, old) in slots.toMap()) {
             trace("edit ${details(old, tool)} newRevision=$revision offset=$offset oldLength=$oldLength newLength=$newLength")
             old.job?.cancel(null)
+            activity?.finish(tool, old.snapshot.logicalPath, old.id)
             val before = old.snapshot.text
             if (offset < 0 || oldLength < 0 || newLength < 0 ||
                 offset + oldLength > before.length || offset + newLength > text.length ||
@@ -159,7 +174,10 @@ internal class MagoDiagnosticState<K>(
 
     @Synchronized
     fun invalidate(key: K) {
-        files.remove(key)?.forEach { (tool, slot) -> trace("invalidate ${details(slot, tool)}"); slot.job?.cancel(null) }
+        files.remove(key)?.forEach { (tool, slot) ->
+            trace("invalidate ${details(slot, tool)}"); slot.job?.cancel(null)
+            activity?.invalidate(tool, slot.snapshot.logicalPath)
+        }
     }
 
     @Synchronized
@@ -169,6 +187,7 @@ internal class MagoDiagnosticState<K>(
             slot.job?.cancel(null)
         } }
         files.clear()
+        activity?.clear()
     }
 
     @Synchronized

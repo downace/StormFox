@@ -20,6 +20,7 @@ import com.intellij.util.ui.InlineIconButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.github.downace.stormfox.format.MagoValidation
+import com.github.downace.stormfox.status.MagoStatusBarWidget
 import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
@@ -86,6 +87,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
         fun dispose() = validation.dispose()
 
         private val enabledCheckBox = JBCheckBox("Use Mago formatter")
+        private val showStatusWidgetCheckBox = JBCheckBox("Show Mago status bar widget")
 
         private val binaryField = TextFieldWithBrowseButton().apply {
             toolTipText = "Enter a binary name, a full path, or a command that starts Mago. Do not include a Mago subcommand."
@@ -143,6 +145,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
             add(JBLabel("Default configuration file:"), cell(gridx = 0, gridy = 5, anchor = GridBagConstraints.WEST, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
             add(configRow.rowComponent, cell(gridx = 1, gridy = 5, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
             add(configRow.status.component, cell(gridx = 1, gridy = 6, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)))
+            add(showStatusWidgetCheckBox, cell(gridx = 1, gridy = 7, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(6, 0, 0, 0)))
         }
 
         /**
@@ -212,7 +215,8 @@ class MagoConfigurable(private val project: Project) : Configurable {
             return enabledCheckBox.isSelected != state.enabled ||
                 binaryField.text.trim() != state.magoPath.trim() ||
                 configField.text.trim() != state.configPath.trim() ||
-                executionRootField.text.trim() != state.executionRoot.trim()
+                executionRootField.text.trim() != state.executionRoot.trim() ||
+                showStatusWidgetCheckBox.isSelected != state.showStatusWidget
         }
 
         fun apply() {
@@ -221,6 +225,10 @@ class MagoConfigurable(private val project: Project) : Configurable {
             state.magoPath = binaryField.text.trim()
             state.configPath = configField.text.trim()
             state.executionRoot = executionRootField.text.trim()
+            if (state.showStatusWidget != showStatusWidgetCheckBox.isSelected) {
+                state.showStatusWidget = showStatusWidgetCheckBox.isSelected
+                MagoStatusBarWidget.refreshOpenProjects()
+            }
         }
 
         fun reset() {
@@ -229,6 +237,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
             binaryField.text = state.magoPath
             configField.text = state.configPath
             executionRootField.text = state.executionRoot
+            showStatusWidgetCheckBox.isSelected = state.showStatusWidget
             binaryRow.status.show(StatusLine.Kind.EMPTY, "")
             configRow.status.show(StatusLine.Kind.EMPTY, "")
         }
