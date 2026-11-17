@@ -35,7 +35,10 @@
 
     <change-notes><![CDATA[
     <ul>
-        <li><b>Run Mago via Docker, Docker Compose, or a custom command</b>, with project path mapping for containers.</li>
+        <li><b>Suppress inspections with <code>@mago-expect</code> or <code>@mago-ignore</code> quick fixes.</b></li>
+        <li>Support older Mago versions (down to 1.18.0), albeit with some limitations.</li>
+        <li>Track background Mago inspections with a status bar widget.</li>
+        <li>Improve failure diagnostics and reduce repeated log messages.</li>
     </ul>
     ]]></change-notes>
 
