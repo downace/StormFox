@@ -30,6 +30,11 @@
   "changed lines only" ranges fall back to the IDE's own formatter.
 * **Success is silent.** A successful format says nothing. Only errors surface, as a balloon with an
   **Open settings** action.
+* **Make failures diagnosable.** When changing external execution, background work or fallbacks,
+  give each failure one logging owner. Use WARN for external failures, ERROR for unexpected plugin
+  defects, INFO for significant transitions and recovery, DEBUG for operations, and TRACE for
+  cache/cancellation details. Keep commands and raw process output at DEBUG; reuse bounded
+  repeat suppression for recurring failures. Cancellation is normal control flow.
 * **Naming:** the plugin is StormFox, the tool is **Mago** in prose and in the UI. The binary and its
   command stay lowercase: `mago`, `mago format`, `mago.toml`.
 * **Mago compatibility is shown in settings, not as a tested-version window in published descriptions.**
@@ -84,7 +89,10 @@ What to check in the IDE:
 
 On Windows, use `./gradlew.bat` instead of `./gradlew`.
 
-Diagnostics: the IDE log (*Help | Show Log in Explorer*), lines prefixed `Mago: `.
+Diagnostics: the IDE log (*Help | Show Log in Explorer*), logger categories under
+`com.github.downace.stormfox`. Use the category to identify the plugin; log messages need no tool prefix.
+For changed failure paths, check the first failure, repeated failure and recovery in the log;
+normal editing and cancellation should stay quiet. See README for enabling detailed logging.
 
 ## Releases
 

@@ -8,6 +8,24 @@ import java.io.File
 import com.intellij.openapi.util.TextRange
 
 class MagoDiagnosticStateTest : TestCase() {
+    fun testStaleSuccessIsNotAcceptedForRecovery() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val gates = mutableListOf<CompletableDeferred<MagoLintRunner.Result>>()
+        val accepted = mutableListOf<Long>()
+        val state = MagoDiagnosticState<String>(scope, { _, _ ->
+            val gate = CompletableDeferred<MagoLintRunner.Result>().also { gates += it }
+            withContext(NonCancellable) { gate.await() }
+        }, { _, _, _ -> }, debounceMillis = 0,
+            accepted = { _, snapshot, _ -> accepted += snapshot.revision })
+        try {
+            state.requestView("f", MagoTool.LINT, snapshot(1))
+            state.requestView("f", MagoTool.LINT, snapshot(2))
+            gates[0].complete(MagoLintRunner.Result.Success(emptyList()))
+            assertTrue(accepted.isEmpty())
+            gates[1].complete(MagoLintRunner.Result.Success(emptyList()))
+            assertEquals(listOf(2L), accepted)
+        } finally { state.dispose(); scope.cancel() }
+    }
     fun testVerifiedCurrentRevisionCanMoveBackwardsWithoutDiscardingRetainedView() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val gates = mutableListOf<CompletableDeferred<MagoLintRunner.Result>>()

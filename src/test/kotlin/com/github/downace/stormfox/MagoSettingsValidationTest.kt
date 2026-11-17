@@ -1,6 +1,7 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.settings.MagoSettingsValidationService
+import com.github.downace.stormfox.format.MagoValidation
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -14,6 +15,17 @@ import java.util.concurrent.atomic.AtomicBoolean
 import javax.swing.SwingUtilities
 
 class MagoSettingsValidationTest : BasePlatformTestCase() {
+    fun testFailedLaunchKeepsExceptionAndCommandOutOfWarning() {
+        val events = mutableListOf<Pair<MagoFailureLog.Level, String>>()
+        val log = MagoFailureLog(emit = { level, message -> events += level to message })
+        val sentinel = "stormfox_missing_secret_sentinel_94281"
+        val directory = java.io.File(System.getProperty("java.io.tmpdir"))
+        val result = MagoValidation.checkBinaryUncached(sentinel, directory, failureLog = log)
+        assertTrue(result is MagoValidation.Result.Failure)
+        assertTrue(events.any { it.first == MagoFailureLog.Level.WARN && it.second.contains(directory.path) })
+        assertTrue(events.filter { it.first != MagoFailureLog.Level.DEBUG }.none { it.second.contains(sentinel) })
+        assertTrue(events.any { it.first == MagoFailureLog.Level.DEBUG && it.second.contains(sentinel) })
+    }
     fun testSuccessfulValidationDeliversResultOnEdt() {
         val parent = SupervisorJob()
         val session = MagoSettingsValidationService(CoroutineScope(Dispatchers.Default + parent)).createSession()

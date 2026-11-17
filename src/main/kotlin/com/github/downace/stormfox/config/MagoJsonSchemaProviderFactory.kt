@@ -5,6 +5,7 @@ import com.github.downace.stormfox.MagoVersionService
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.VirtualFileManager
@@ -17,6 +18,16 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import java.io.File
+
+internal enum class SchemaDownloadEvent { STALE, SUCCESS, FAILED_LATEST, FAILED_VERSION }
+
+internal fun schemaDownloadEvent(currentUrl: String, requestUrl: String, latestUrl: String, succeeded: Boolean): SchemaDownloadEvent =
+    when {
+        currentUrl != requestUrl -> SchemaDownloadEvent.STALE
+        succeeded -> SchemaDownloadEvent.SUCCESS
+        requestUrl == latestUrl -> SchemaDownloadEvent.FAILED_LATEST
+        else -> SchemaDownloadEvent.FAILED_VERSION
+    }
 
 class MagoJsonSchemaProviderFactory : JsonSchemaProviderFactory {
     override fun getProviders(project: Project): List<JsonSchemaFileProvider> =
@@ -83,22 +94,38 @@ class MagoJsonSchemaProvider internal constructor(
             }
             if (downloads.containsKey(url)) return null
             downloads[url] = Download.REQUESTED
+            LOG.debug("Requesting schema download: $url")
         }
         remote.refresh(true, false) {
             val changed = synchronized(this) {
                 // Do not let an obsolete request select a fallback for the current version.
-                if (selectedUrl() != url) {
+                val local = remote.fileInfo?.localFile
+                val event = schemaDownloadEvent(selectedUrl(), url, latestUrl, local != null && local.isValid && local.length > 0)
+                LOG.debug("Schema download result for $url: $event")
+                if (event == SchemaDownloadEvent.STALE) {
                     downloads.remove(url)
                     false
                 } else {
-                    val local = remote.fileInfo?.localFile
-                    downloads[url] = if (local != null && local.isValid && local.length > 0)
-                        Download.SUCCEEDED else Download.FAILED
+                    downloads[url] = if (event == SchemaDownloadEvent.SUCCESS) Download.SUCCEEDED else Download.FAILED
+                    when (event) {
+                        SchemaDownloadEvent.FAILED_VERSION -> {
+                            val versionLabel = url.removePrefix("$baseUrl/").removeSuffix("/schema.json")
+                                .takeIf { it.matches(Regex("""\d+\.\d+\.\d+""")) } ?: "unknown"
+                            LOG.warn("Schema download failed for version $versionLabel")
+                            LOG.info("Falling back to latest schema")
+                        }
+                        SchemaDownloadEvent.FAILED_LATEST -> LOG.warn("Latest schema download failed")
+                        else -> Unit
+                    }
                     true
                 }
             }
             if (changed && !project.isDisposed) onChange()
         }
         return null
+    }
+
+    companion object {
+        private val LOG = Logger.getInstance(MagoJsonSchemaProvider::class.java)
     }
 }

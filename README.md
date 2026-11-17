@@ -10,6 +10,7 @@
 Works with PhpStorm 2024.3+ and IntelliJ IDEA 2024.3+.
 
 Feel free to [report issues](https://github.com/downace/StormFox/issues) if you encounter errors or need more features.
+See [Troubleshooting](#troubleshooting) for collecting logs to include in a bug report.
 
 ## Setup
 
@@ -49,3 +50,29 @@ to show Mago findings in the editor.
   **Settings | Editor | Code Style | PHP** page no longer affects them.
 * Only whole files are formatted. Mago cannot format a fragment, so selections and "changed lines
    only" ranges are handled by the IDE's own formatter.
+
+## Troubleshooting
+
+Open **Help | Show Log in Explorer** and look in `idea.log` for entries whose logger
+category contains `com.github.downace.stormfox`. Normal logging records failures and
+important state changes.
+
+For detailed logging, open **Help | Diagnostic Tools | Debug Log Settings**
+and add this category:
+
+```text
+#com.github.downace.stormfox
+```
+
+To trace diagnostic caching, cancellation and highlighting updates, use TRACE
+instead:
+
+```text
+#com.github.downace.stormfox:trace
+```
+
+Reproduce the problem, then remove the category to disable detailed logging.
+
+**DEBUG and TRACE may contain the full command line, secrets in its arguments,
+paths, PHP code and the complete Mago output.** Review the log and remove sensitive
+data before sharing it.

@@ -1,6 +1,8 @@
 package com.github.downace.stormfox.format
 
 import com.github.downace.stormfox.MagoExecutionContext
+import com.github.downace.stormfox.MagoFailureLog
+import com.github.downace.stormfox.MagoFailureLogService
 import com.github.downace.stormfox.terminateMagoProcess
 import com.github.downace.stormfox.MagoVersion
 import com.github.downace.stormfox.MagoVersionService
@@ -34,19 +36,28 @@ internal object MagoValidation {
         return result
     }
 
-    internal fun checkBinaryUncached(binaryPath: String, projectDirectory: File? = null, executionRoot: String = ""): Result {
+    internal fun checkBinaryUncached(binaryPath: String, projectDirectory: File? = null, executionRoot: String = "",
+                                     failureLog: MagoFailureLog = MagoFailureLogService.get()): Result {
+        val key = MagoFailureLog.context(binaryPath.trim(), projectDirectory?.absoluteFile?.normalize()?.path.orEmpty(), executionRoot)
         if (binaryPath.isBlank()) {
+            failureLog.failure(key, "validation", "version", "missing-command", projectDirectory?.path)
             return Result.Failure("The Mago command is not set")
         }
         val arguments = try { MagoExecutionContext(binaryPath, projectDirectory, executionRoot).command() + "--version" }
-        catch (e: IllegalArgumentException) { return Result.Failure(e.message ?: "Invalid Mago command") }
-        return when (val outcome = run(arguments, projectDirectory)) {
+        catch (e: IllegalArgumentException) {
+            failureLog.failure(key, "validation", "version", "invalid-command", projectDirectory?.path)
+            failureLog.debug { "invalid validation command: ${e.message}" }
+            return Result.Failure(e.message ?: "Invalid Mago command")
+        }
+        return when (val outcome = run(arguments, projectDirectory, key, "version", false, failureLog)) {
             is Result.Success -> {
                 val message = outcome.message.trim().ifEmpty { "mago is available" }
                 val version = MagoVersion.parse(message)
                 if (version != null && !version.isSupported) {
+                    failureLog.failure(key, "validation", "version", "unsupported", projectDirectory?.path)
                     return Result.Failure("Mago $version is not supported. Use Mago 1.18.0 or newer.")
                 }
+                if (version == null) failureLog.failure(key, "validation", "version", "unrecognized-output", projectDirectory?.path)
                 val warning = if (version != null && !version.supportsFilepathAwareExcludes)
                     "Mago $version may format files excluded by source.excludes or formatter.excludes. Use Mago 1.25.0 or newer to honor these exclusions."
                 else null
@@ -57,7 +68,9 @@ internal object MagoValidation {
     }
 
     fun checkConfig(binaryPath: String, configPath: String, projectDirectory: File? = null, executionRoot: String = ""): Result {
+        val key = MagoFailureLog.context(binaryPath.trim(), projectDirectory?.absoluteFile?.normalize()?.path.orEmpty(), executionRoot, configPath)
         if (binaryPath.isBlank()) {
+            MagoFailureLogService.get().failure(key, "validation", "config", "missing-command", projectDirectory?.path)
             return Result.Failure("The Mago command is not set")
         }
         if (configPath.isBlank()) {
@@ -66,14 +79,23 @@ internal object MagoValidation {
         val arguments = try {
             val context = MagoExecutionContext(binaryPath, projectDirectory, executionRoot)
             context.command() + listOf("--config", context.toExecution(configPath), "config")
-        } catch (e: IllegalArgumentException) { return Result.Failure(e.message ?: "Invalid Mago command") }
-        return when (val outcome = run(arguments, projectDirectory)) {
+        } catch (e: IllegalArgumentException) {
+            MagoFailureLogService.get().failure(key, "validation", "config", "invalid-command", projectDirectory?.path)
+            LOG.debug("invalid config validation command", e)
+            return Result.Failure(e.message ?: "Invalid Mago command")
+        }
+        return when (val outcome = run(arguments, projectDirectory, key, "config", true)) {
             is Result.Success -> Result.Success("Configuration is valid")
             is Result.Failure -> outcome
         }
     }
 
-    private fun run(arguments: List<String>, workingDirectory: File?): Result {
+    private fun run(arguments: List<String>, workingDirectory: File?, key: String, stage: String, recover: Boolean,
+                    failures: MagoFailureLog = MagoFailureLogService.get()): Result {
+        fun failed(category: String, message: String): Result.Failure {
+            failures.failure(key, "validation", stage, category, workingDirectory?.path)
+            return Result.Failure(message)
+        }
         ProgressManager.checkCanceled()
         val commandLine = GeneralCommandLine(arguments).withCharset(StandardCharsets.UTF_8)
         if (workingDirectory != null) commandLine.withWorkDirectory(workingDirectory)
@@ -81,8 +103,8 @@ internal object MagoValidation {
         val handler = try {
             CapturingProcessHandler(commandLine)
         } catch (e: ExecutionException) {
-            LOG.warn("Cannot start mago", e)
-            return Result.Failure("Cannot start mago: ${e.message}")
+            failures.debug { "validation start failed: ${e.message}" }
+            return failed("start", "Cannot start mago: ${e.message}")
         }
 
         return try {
@@ -92,25 +114,27 @@ internal object MagoValidation {
             indicator.checkCanceled()
             val output = handler.runProcessWithProgressIndicator(indicator, TIMEOUT_MS, true)
             indicator.checkCanceled()
+            failures.debug { "validation command=${commandLine.commandLineString}; exit=${output.exitCode}; stdout=${output.stdout}; stderr=${output.stderr}" }
             if (output.isTimeout) {
-                return Result.Failure("mago did not answer within ${TIMEOUT_MS / 1000} seconds")
+                return failed("timeout", "mago did not answer within ${TIMEOUT_MS / 1000} seconds")
             }
             if (output.exitCode != 0) {
                 val message = output.stderr.trim().ifEmpty { output.stdout.trim() }
-                return Result.Failure(message.ifEmpty { "mago exited with code ${output.exitCode}" })
+                return failed("exit-${output.exitCode}", message.ifEmpty { "mago exited with code ${output.exitCode}" })
             }
             // Some Mago builds emit informational output (including --version) on stderr.
             val message = listOf(output.stdout.trim(), output.stderr.trim())
                 .filter(String::isNotEmpty)
                 .joinToString("\n")
+            if (recover) failures.success(key, "validation", stage)
             return Result.Success(message)
         } catch (e: ProcessCanceledException) {
             throw e
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
-            LOG.warn("mago validation failed", e)
-            return Result.Failure(e.message ?: e.toString())
+            LOG.debug("validation execution failed", e)
+            return failed("exception", e.message ?: e.toString())
         } finally {
             terminateMagoProcess(handler)
         }

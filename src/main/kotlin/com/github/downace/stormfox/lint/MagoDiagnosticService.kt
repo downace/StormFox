@@ -27,6 +27,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.MagoFailureLog
+import com.github.downace.stormfox.MagoFailureLogService
 import java.io.File
 import java.util.Locale
 import java.nio.file.InvalidPathException
@@ -61,7 +63,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
     @Volatile internal var computeForTest: (suspend (MagoTool, MagoSnapshot) -> MagoDiagnosticRunner.Result)? = null
     private val generation = AtomicLong()
     private val log = Logger.getInstance(MagoDiagnosticService::class.java)
-    internal fun trace(message: String) { log.info("Mago: diagnostics project=${project.name} $message") }
+    internal fun trace(message: String) { if (log.isTraceEnabled) log.trace("diagnostics project=${project.name} $message") }
     private val workers = MagoTool.entries.associateWith { Semaphore(1) }
     val activity = MagoDiagnosticActivity()
     @Volatile private var disposed = false
@@ -86,7 +88,15 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
             trace("restart $details")
             DaemonCodeAnalyzer.getInstance(project).restart(psi)
         }
-    }, trace = { trace(it) }, activity = activity, execute = { tool, snapshot, token, run ->
+    }, trace = { trace(it) }, traceEnabled = { log.isTraceEnabled }, activity = activity, accepted = { tool, snapshot, result ->
+        if (result is MagoDiagnosticRunner.Result.Success) {
+            val key = MagoFailureLog.context(snapshot.binary.trim(), snapshot.workingDirectory.absoluteFile.normalize().path,
+                snapshot.configPath, snapshot.executionRoot)
+            val failures = MagoFailureLogService.get()
+            failures.success(key, "diagnostics-${tool.command}", "command", "source", "process")
+            failures.success(MagoFailureLog.context(key, snapshot.logicalPath), "diagnostics-${tool.command}", "command", "report")
+        }
+    }, execute = { tool, snapshot, token, run ->
         val testCompute = computeForTest
         if (testCompute != null) {
             activity.running(tool, snapshot.logicalPath, token)

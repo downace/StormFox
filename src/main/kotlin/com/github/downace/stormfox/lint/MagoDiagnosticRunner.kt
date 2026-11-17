@@ -1,6 +1,8 @@
 package com.github.downace.stormfox.lint
 
 import com.github.downace.stormfox.MagoExecutionContext
+import com.github.downace.stormfox.MagoFailureLog
+import com.github.downace.stormfox.MagoFailureLogService
 import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
@@ -39,7 +41,7 @@ internal object MagoDiagnosticRunner {
 
     private sealed interface ProcessResult {
         data class Success(val stdout: String, val stderr: String, val exitCode: Int) : ProcessResult
-        data class Failure(val message: String) : ProcessResult
+        data class Failure(val message: String, val category: String) : ProcessResult
     }
 
     fun arguments(binary: String, configPath: String, logicalPath: String, workingDirectory: File, tool: MagoTool = MagoTool.LINT): List<String> {
@@ -58,11 +60,22 @@ internal object MagoDiagnosticRunner {
     fun run(binary: String, workingDirectory: File, configPath: String, logicalPath: String, text: String,
              tool: MagoTool = MagoTool.LINT, indicator: ProgressIndicator? = null, executionRoot: String = ""): Result {
         ProgressManager.checkCanceled()
+        val failures = MagoFailureLogService.get()
+        val key = MagoFailureLog.context(binary.trim(), workingDirectory.absoluteFile.normalize().path, configPath, executionRoot)
+        val fileKey = MagoFailureLog.context(key, logicalPath)
+        val operation = "diagnostics-${tool.command}"
+        fun failed(stage: String, category: String, message: String): Result.Failure {
+            failures.failure(if (category == "path") fileKey else key, operation, stage, category, workingDirectory.path)
+            return Result.Failure(message)
+        }
         val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
         val globals = try { globalArguments(context, configPath) }
-        catch (e: IllegalArgumentException) { return failure("Invalid Mago command: ${e.message}", e) }
+        catch (e: IllegalArgumentException) {
+            log.debug("invalid diagnostic command", e)
+            return failed("command", "invalid", "Invalid Mago command: ${e.message}")
+        }
         val source = execute(globals + listOf("config", "--show", "source"), workingDirectory, "", 0..0, indicator, tool.timeoutMillis)
-        if (source is ProcessResult.Failure) return Result.Failure(source.message)
+        if (source is ProcessResult.Failure) return failed("source", source.category, source.message)
         source as ProcessResult.Success
         val workspace = try {
             val root = JsonParser.parseString(source.stdout)
@@ -79,9 +92,11 @@ internal object MagoDiagnosticRunner {
             if (executionRoot.isNotBlank()) File(context.toHost(normalizedPath))
             else File(normalizedPath).let { if (it.isAbsolute) it else File(workingDirectory, normalizedPath) }
         } catch (e: com.google.gson.JsonParseException) {
-            return failure("Mago returned an invalid source configuration: ${e.message}", e, source.stdout + "\n" + source.stderr)
+            failure("Mago returned an invalid source configuration: ${e.message}", e, source.stdout + "\n" + source.stderr)
+            return failed("source", "invalid-report", "Mago returned an invalid source configuration: ${e.message}")
         } catch (e: IllegalArgumentException) {
-            return failure("Mago returned an invalid source configuration: ${e.message}", e, source.stdout + "\n" + source.stderr)
+            failure("Mago returned an invalid source configuration: ${e.message}", e, source.stdout + "\n" + source.stderr)
+            return failed("source", "invalid-report", "Mago returned an invalid source configuration: ${e.message}")
         }
         val arguments = try {
             if (executionRoot.isNotBlank()) context.toExecution(logicalPath)
@@ -89,14 +104,17 @@ internal object MagoDiagnosticRunner {
                 .relativize(File(logicalPath).toPath().toAbsolutePath().normalize()).toString().replace('\\', '/')
             globals + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relative)
         } catch (e: IllegalArgumentException) {
-            return failure("Cannot resolve Mago ${tool.command} path: ${e.message}", e)
+            log.debug("cannot resolve diagnostic path", e)
+            return failed("command", "path", "Cannot resolve Mago ${tool.command} path: ${e.message}")
         }
         val output = execute(arguments, workingDirectory, text, 0..1, indicator, tool.timeoutMillis)
-        if (output is ProcessResult.Failure) return Result.Failure(output.message)
+        if (output is ProcessResult.Failure) return failed("process", output.category, output.message)
         output as ProcessResult.Success
-        return parseOutput(output.stdout, output.stderr, output.exitCode, source.stderr, text, logicalPath, workspace, tool) {
+        val result = parseOutput(output.stdout, output.stderr, output.exitCode, source.stderr, text, logicalPath, workspace, tool) {
             if (executionRoot.isBlank()) it else context.toHost(it, context.toExecution(workspace.path))
         }
+        if (result is Result.Failure) failures.failure(fileKey, operation, "report", "invalid", workingDirectory.path)
+        return result
     }
 
     internal fun parseOutput(stdout: String, stderr: String, exitCode: Int, sourceStderr: String, text: String,
@@ -141,18 +159,18 @@ internal object MagoDiagnosticRunner {
             GeneralCommandLine(arguments)
                 .withCharset(StandardCharsets.UTF_8).withWorkDirectory(workingDirectory)
         } catch (e: IllegalArgumentException) {
-            return processFailure("Cannot resolve Mago path: ${e.message}", e)
+            return processFailure("Cannot resolve Mago path: ${e.message}", "path", e)
         }
         val handler = try {
             CapturingProcessHandler(command)
         } catch (e: ExecutionException) {
-            return processFailure("Cannot start Mago: ${e.message}", e)
+            return processFailure("Cannot start Mago: ${e.message}", "start", e)
         }
         val writer = AppExecutorUtil.getAppExecutorService().submit {
             try {
                 handler.processInput.use { it.write(text.toByteArray(StandardCharsets.UTF_8)) }
             } catch (e: IOException) {
-                log.debug("Cannot write Mago stdin", e)
+                log.debug("cannot write diagnostic stdin", e)
             }
         }
         try {
@@ -160,10 +178,10 @@ internal object MagoDiagnosticRunner {
             val output = handler.runProcessWithProgressIndicator(indicator, timeoutMillis, true)
             indicator.checkCanceled()
             ProgressManager.checkCanceled()
-            log.debug("Mago: ${command.commandLineString}; exit ${output.exitCode}; stderr: ${output.stderr}")
-            if (output.isTimeout) return processFailure("Mago did not finish within ${timeoutMillis / 1000} seconds")
+            if (log.isDebugEnabled) log.debug("${command.commandLineString}; exit ${output.exitCode}; stdout: ${output.stdout}; stderr: ${output.stderr}")
+            if (output.isTimeout) return processFailure("Mago did not finish within ${timeoutMillis / 1000} seconds", "timeout")
             if (output.exitCode !in validExitCodes) {
-                return processFailure("Mago failed (exit ${output.exitCode}): ${output.stderr.trim().ifEmpty { "No diagnostics returned" }}")
+                return processFailure("Mago failed (exit ${output.exitCode}): ${output.stderr.trim().ifEmpty { "No diagnostics returned" }}", "exit-${output.exitCode}")
             }
             return ProcessResult.Success(output.stdout, output.stderr, output.exitCode)
         } finally {
@@ -172,13 +190,13 @@ internal object MagoDiagnosticRunner {
         }
     }
 
-    private fun processFailure(message: String, cause: Throwable? = null): ProcessResult.Failure {
-        log.warn(message, cause)
-        return ProcessResult.Failure(message)
+    private fun processFailure(message: String, category: String, cause: Throwable? = null): ProcessResult.Failure {
+        if (log.isDebugEnabled) log.debug("diagnostic process failed: $message", cause)
+        return ProcessResult.Failure(message, category)
     }
 
     private fun failure(message: String, cause: Throwable? = null, details: String = ""): Result.Failure {
-        log.warn("$message\n$details", cause)
+        if (log.isDebugEnabled) log.debug("diagnostic processing failed: $message\n$details", cause)
         return Result.Failure(message)
     }
 }

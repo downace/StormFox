@@ -45,8 +45,8 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         }
 
         val workingDirectory = request.context.project.basePath?.let(::File)
-        LOG.info(
-            "Mago: formatting $logicalPath with ${settings.magoPath} " +
+        if (LOG.isDebugEnabled) LOG.debug(
+            "formatting $logicalPath with ${settings.magoPath} " +
                 "(config ${settings.configPath.ifBlank { "<auto>" }})",
         )
         return MagoFormattingTask(
@@ -86,8 +86,8 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         override fun run() {
             cancellation.checkCanceled()
             val result = format(cancellation)
-            LOG.info(
-                "Mago: formatted $logicalPath, result=${result::class.simpleName}, " +
+            if (LOG.isDebugEnabled) LOG.debug(
+                "formatted $logicalPath, result=${result::class.simpleName}, " +
                     "changed=${result is MagoRunner.Result.Success && result.text != originalText}",
             )
             cancellation.deliver {

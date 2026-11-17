@@ -28,7 +28,9 @@ internal class MagoDiagnosticState<K>(
     private val capacity: Int = 64,
     private val debounceMillis: Long = 300,
     private val trace: (String) -> Unit = {},
+    private val traceEnabled: () -> Boolean = { true },
     private val activity: MagoDiagnosticActivity? = null,
+    private val accepted: (MagoTool, MagoSnapshot, MagoDiagnosticRunner.Result) -> Unit = { _, _, _ -> },
     private val execute: suspend (MagoTool, MagoSnapshot, Long, suspend () -> MagoDiagnosticRunner.Result) -> MagoDiagnosticRunner.Result =
         { _, _, _, run -> run() },
 ) {
@@ -60,18 +62,18 @@ internal class MagoDiagnosticState<K>(
         // A delayed annotator pass must not replace a slot already advanced by an edit.
         if (previous != null && (previous.snapshot.generation > snapshot.generation ||
                 !verifiedCurrent && previous.snapshot.isNewerThan(snapshot))) {
-            trace("request-drop reason=older file=${snapshot.logicalPath} tool=$tool revision=${snapshot.revision} generation=${snapshot.generation} currentSlot=${previous.id}")
+            if (traceEnabled()) trace("request-drop reason=older file=${snapshot.logicalPath} tool=$tool revision=${snapshot.revision} generation=${snapshot.generation} currentSlot=${previous.id}")
             return null
         }
         val slot = if (previous?.snapshot == snapshot) previous else {
-            if (previous?.job?.isActive == true) trace("cancel reason=request-replaced ${details(previous, tool)}")
+            if (previous?.job?.isActive == true) if (traceEnabled()) trace("cancel reason=request-replaced ${details(previous, tool)}")
             previous?.job?.cancel(null)
             slot(snapshot).also { next ->
                 val success = previous?.view?.result as? MagoDiagnosticRunner.Result.Success
                 if (verifiedCurrent && previous != null && success != null &&
                     previous.snapshot.copy(revision = snapshot.revision) == snapshot) {
                     next.view = View(success, true, next.id)
-                    trace("request-rebase reason=current-revision ${details(next, tool)} previousSlot=${previous.id} count=${success.diagnostics.size}")
+                    if (traceEnabled()) trace("request-rebase reason=current-revision ${details(next, tool)} previousSlot=${previous.id} count=${success.diagnostics.size}")
                 }
                 slots[tool] = next
             }
@@ -80,28 +82,29 @@ internal class MagoDiagnosticState<K>(
         while (files.size > capacity) {
             val iterator = files.entries.iterator()
             iterator.next().value.forEach { (evictedTool, evicted) ->
-                trace("cancel reason=capacity ${details(evicted, evictedTool)}")
+                if (traceEnabled()) trace("cancel reason=capacity ${details(evicted, evictedTool)}")
                 evicted.job?.cancel(null)
                 activity?.invalidate(evictedTool, evicted.snapshot.logicalPath)
             }
             iterator.remove()
         }
-        trace("request-start ${details(slot, tool)} view=${if (slot.view == null) "none" else "retained"}")
+        if (traceEnabled()) trace("request-start ${details(slot, tool)} view=${if (slot.view == null) "none" else "retained"}")
         activity?.begin(tool, snapshot.logicalPath, slot.id)
         slot.job = scope.launch(start = CoroutineStart.LAZY) {
             try {
                 delay(debounceMillis)
-                trace("compute-start ${details(slot, tool)}")
+                if (traceEnabled()) trace("compute-start ${details(slot, tool)}")
                 val result = execute(tool, snapshot, slot.id) { compute(tool, snapshot) }
                 val publish = synchronized(this@MagoDiagnosticState) {
                     if (disposed || files[key]?.get(tool) !== slot) false
                     else {
                         slot.view = View(result, false, slot.id)
+                        accepted(tool, snapshot, result)
                         activity?.finish(tool, snapshot.logicalPath, slot.id, result)
                         true
                     }
                 }
-                trace("compute-${if (publish) "complete" else "drop"} ${details(slot, tool)} ${status(result)}")
+                if (traceEnabled()) trace("compute-${if (publish) "complete" else "drop"} ${details(slot, tool)} ${status(result)}")
                 if (publish) completed(key, tool, snapshot)
             } finally {
                 activity?.finish(tool, snapshot.logicalPath, slot.id)
@@ -114,7 +117,7 @@ internal class MagoDiagnosticState<K>(
                 synchronized(this@MagoDiagnosticState) {
                     if (slot.job === job) slot.job = null
                 }
-                trace("compute-ended ${details(slot, tool)} reason=${if (cause is kotlinx.coroutines.CancellationException) "cancelled" else "exception"} type=${cause.javaClass.simpleName}")
+                if (traceEnabled()) trace("compute-ended ${details(slot, tool)} reason=${if (cause is kotlinx.coroutines.CancellationException) "cancelled" else "exception"} type=${cause.javaClass.simpleName}")
             }
         }
         job.start()
@@ -128,7 +131,7 @@ internal class MagoDiagnosticState<K>(
     fun edited(key: K, offset: Int, oldLength: Int, newLength: Int, text: String, revision: Long) {
         val slots = files[key] ?: return
         for ((tool, old) in slots.toMap()) {
-            trace("edit ${details(old, tool)} newRevision=$revision offset=$offset oldLength=$oldLength newLength=$newLength")
+            if (traceEnabled()) trace("edit ${details(old, tool)} newRevision=$revision offset=$offset oldLength=$oldLength newLength=$newLength")
             old.job?.cancel(null)
             activity?.finish(tool, old.snapshot.logicalPath, old.id)
             val before = old.snapshot.text
@@ -138,7 +141,7 @@ internal class MagoDiagnosticState<K>(
                 before.substring(0, offset) != text.substring(0, offset) ||
                 before.substring(offset + oldLength) != text.substring(offset + newLength)) {
                 slots.remove(tool)
-                trace("edit-drop reason=snapshot-mismatch ${details(old, tool)}")
+                if (traceEnabled()) trace("edit-drop reason=snapshot-mismatch ${details(old, tool)}")
                 continue
             }
             val slot = slot(old.snapshot.copy(revision = revision, text = text))
@@ -158,7 +161,7 @@ internal class MagoDiagnosticState<K>(
                     }
                 }
                 slot.view = View(success.copy(diagnostics = diagnostics), true, slot.id)
-                trace("edit-retain ${details(slot, tool)} previousSlot=${old.id} count=${diagnostics.size}")
+                if (traceEnabled()) trace("edit-retain ${details(slot, tool)} previousSlot=${old.id} count=${diagnostics.size}")
             }
             slots[tool] = slot
         }
@@ -175,7 +178,7 @@ internal class MagoDiagnosticState<K>(
     @Synchronized
     fun invalidate(key: K) {
         files.remove(key)?.forEach { (tool, slot) ->
-            trace("invalidate ${details(slot, tool)}"); slot.job?.cancel(null)
+            if (traceEnabled()) trace("invalidate ${details(slot, tool)}"); slot.job?.cancel(null)
             activity?.invalidate(tool, slot.snapshot.logicalPath)
         }
     }
@@ -183,7 +186,7 @@ internal class MagoDiagnosticState<K>(
     @Synchronized
     fun invalidateAll() {
         files.values.forEach { slots -> slots.forEach { (tool, slot) ->
-            trace("invalidate-all ${details(slot, tool)}")
+            if (traceEnabled()) trace("invalidate-all ${details(slot, tool)}")
             slot.job?.cancel(null)
         } }
         files.clear()
@@ -203,10 +206,10 @@ internal class MagoDiagnosticState<K>(
                 snapshot.environment == environment) {
                 retained[tool] = slot(snapshot.copy(generation = newGeneration)).also {
                     it.view = View(result, true, it.id)
-                    trace("save-retain ${details(it, tool)} previousSlot=${old.id} count=${result.diagnostics.size}")
+                    if (traceEnabled()) trace("save-retain ${details(it, tool)} previousSlot=${old.id} count=${result.diagnostics.size}")
                 }
             } else {
-                trace("save-drop ${details(old, tool)} reason=${if (result == null) "no-success" else "snapshot-mismatch"}")
+                if (traceEnabled()) trace("save-drop ${details(old, tool)} reason=${if (result == null) "no-success" else "snapshot-mismatch"}")
             }
         }
         invalidateAll()

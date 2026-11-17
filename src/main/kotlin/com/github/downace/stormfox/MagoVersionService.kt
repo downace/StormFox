@@ -5,6 +5,7 @@ import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.settings.MagoSettingsSnapshot
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.startup.ProjectActivity
@@ -28,6 +29,10 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
     internal var projectDirectoriesForTest: (() -> List<File>)? = null
     @org.jetbrains.annotations.TestOnly
     internal var probeForTest: ((String, File?, String) -> MagoValidation.Result)? = null
+    @org.jetbrains.annotations.TestOnly
+    internal var acceptedVersionForTest: ((MagoVersion) -> Unit)? = null
+    @org.jetbrains.annotations.TestOnly
+    internal var failureLogForTest: MagoFailureLog? = null
 
     private fun key(command: String, directory: File?, root: String) =
         Key(command.trim(), directory?.toPath()?.toAbsolutePath()?.normalize()?.toString(), root.trim())
@@ -73,8 +78,10 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
         if (command.isBlank() || directory == null && !safeWithoutProject(command, root)) return
         scope.launch(Dispatchers.IO) {
             if (directory != null && !directory.isDirectory) return@launch
+            LOG.debug("Starting version probe")
             val result = probeForTest?.invoke(command, directory, root)
                 ?: MagoValidation.checkBinaryUncached(command, directory, root)
+            if (LOG.isDebugEnabled) LOG.debug("Version probe completed: $result")
             finish(token, command, result, directory, root)
         }
     }
@@ -110,9 +117,25 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
         val settingsContext = current(directory)
         val changed = synchronized(this) {
             val entry = entries[context]
-            if (token == null || entry?.token != token || context != settingsContext) return
+            if (token == null || entry?.token != token || context != settingsContext) {
+                LOG.debug("Discarding stale version probe result")
+                return
+            }
             val next = (result as? MagoValidation.Result.Success)?.let { MagoVersion.parse(it.message) }
-            if (next == entry.version) false else { entry.version = next; true }
+            if (next != null) {
+                val failureContext = MagoFailureLog.context(
+                    binaryPath.trim(), directory?.absoluteFile?.normalize()?.path.orEmpty(), executionRoot,
+                )
+                (failureLogForTest ?: MagoFailureLogService.get()).success(failureContext, "validation", "version")
+            }
+            if (next == entry.version) false else {
+                entry.version = next
+                if (next != null) {
+                    LOG.info("Accepted version $next")
+                    acceptedVersionForTest?.invoke(next)
+                }
+                true
+            }
         }
         if (changed) publishChange()
     }
@@ -122,6 +145,7 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
     }
 
     companion object {
+        private val LOG = Logger.getInstance(MagoVersionService::class.java)
         private fun safeWithoutProject(command: String, root: String): Boolean {
             if (root.isNotBlank()) return false
             val value = command.trim()

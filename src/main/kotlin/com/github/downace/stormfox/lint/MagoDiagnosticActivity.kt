@@ -48,7 +48,8 @@ class MagoDiagnosticActivity {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                log.warn("Mago diagnostic activity listener failed", e)
+                log.error("diagnostic activity listener failed")
+                log.debug("diagnostic activity listener exception", e)
             }
         }
     }
