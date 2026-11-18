@@ -2,6 +2,7 @@ package com.github.downace.stormfox
 
 import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
 import com.github.downace.stormfox.lint.MagoDiagnosticTooltip as MagoLintTooltip
+import com.github.downace.stormfox.lint.MagoRuleMetadata
 import com.github.downace.stormfox.lint.MagoRelatedNavigation
 import com.github.downace.stormfox.lint.MagoShowRelatedLocationsAction
 import com.intellij.codeInsight.hint.TooltipLinkHandlerEP
@@ -15,6 +16,7 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.util.TextRange
 import com.intellij.psi.PsiDocumentManager
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import javax.swing.text.Element
 
 class MagoLintTooltipTest : BasePlatformTestCase() {
     fun testAllToolsShareSummaryFallbackAndPreserveDistinctIssueInDetails() {
@@ -62,6 +64,34 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         assertTrue(details.contains("Open Mago config"))
     }
 
+    fun testMetadataIsIgnoredForNonLintOrMismatchedRuleCode() {
+        val metadata = MagoRuleMetadata(
+            code = "known-rule", name = "A rule", category = "Security", description = "Details",
+            level = "Error", goodExample = "good", badExample = "bad",
+        )
+        for (source in com.github.downace.stormfox.lint.MagoTool.entries.filter {
+            it != com.github.downace.stormfox.lint.MagoTool.LINT
+        }) {
+            val details = MagoLintTooltip.expanded(
+                diagnostic(code = metadata.code, help = "More").copy(source = source), metadata,
+            )!!
+            assertFalse(details.contains("A rule"))
+            assertFalse(details.contains("Bad example"))
+            assertTrue(details.contains("AllIcons.Actions.IntentionBulb"))
+        }
+        val wrongCode = MagoLintTooltip.expanded(diagnostic(code = "other-rule", help = "More"), metadata)!!
+        assertFalse(wrongCode.contains("A rule"))
+    }
+
+    fun testMetadataOmitsMissingLevelAndExamples() {
+        val metadata = MagoRuleMetadata(code = "rule code", name = "A rule", level = "")
+        val details = MagoLintTooltip.expanded(diagnostic(code = metadata.code, help = "More"), metadata)!!
+        assertTrue(details.contains("A rule"))
+        assertFalse(details.contains("(default)"))
+        assertFalse(details.contains("Bad example"))
+        assertFalse(details.contains("Good example"))
+    }
+
     fun testTopLevelMessageIsFallbackAndNotRepeatedInDetails() {
         val diagnostic = diagnostic(message = "Fallback message", primary = null, code = null, help = "More detail")
         val compact = MagoLintTooltip.compact(diagnostic)
@@ -97,6 +127,69 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         val pane = IdeTooltipManager.initPane(html, HintUtil.getInformationHint(), null)
         assertTrue(pane.preferredSize.width > 0)
         assertTrue(pane.preferredSize.height > 0)
+    }
+
+    fun testRuleMetadataRendersTitleDividerAndDefaultLevelInNativePane() {
+        val metadata = MagoRuleMetadata(
+            code = "prefer-strict-types",
+            name = "Prefer strict types",
+            category = "Clarity",
+            description = "Use **explicit** types where possible.",
+            level = "Warning",
+        )
+        val html = MagoLintTooltip.expanded(diagnostic(code = metadata.code, help = "Rule help"), metadata)!!
+
+        assertTrue(html.contains("<b><font size=\"+1\">Prefer strict types</font></b>"))
+        assertTrue(html.contains("<hr>"))
+        assertTrue(html.contains("Clarity"))
+        assertTrue(html.contains("Warning (default)"))
+        assertTrue(html.contains("<b>explicit</b> types"))
+        assertTrue(html.contains("com.intellij.icons.AllIcons.General.InspectionsEye"))
+        assertTrue(html.contains("com.intellij.icons.AllIcons.General.Warning"))
+
+        val pane = IdeTooltipManager.initPane(html, HintUtil.getInformationHint(), null)
+        assertTrue(pane.preferredSize.width > 0)
+        assertTrue(pane.preferredSize.height > 0)
+        val elementNames = mutableListOf<String>()
+        fun collect(element: Element) {
+            elementNames += element.name.lowercase()
+            for (index in 0 until element.elementCount) collect(element.getElement(index))
+        }
+        collect(pane.document.defaultRootElement)
+        assertTrue(elementNames.contains("hr"))
+        assertTrue(elementNames.contains("table"))
+    }
+
+    fun testLargeRuleExamplesAreNotIncludedInCompactOrExpandedTooltip() {
+        val badExample = "<?php\n" + "BAD_SAMPLE_SENTINEL\n".repeat(20_000)
+        val goodExample = "<?php\n" + "GOOD_SAMPLE_SENTINEL\n".repeat(20_000)
+        val metadata = MagoRuleMetadata(
+            code = "large-example-rule", name = "Large example rule",
+            badExample = badExample, goodExample = goodExample,
+        )
+        val diagnostic = diagnostic(code = metadata.code, help = "Rule help")
+        val compact = MagoLintTooltip.compact(diagnostic, metadata)
+        val details = expanded(compact)
+
+        assertFalse(compact.contains("BAD_SAMPLE_SENTINEL"))
+        assertFalse(compact.contains("GOOD_SAMPLE_SENTINEL"))
+        assertFalse(details.contains("BAD_SAMPLE_SENTINEL"))
+        assertFalse(details.contains("GOOD_SAMPLE_SENTINEL"))
+        val detailsLink = Regex("<a href=\\\"(stormfox-mago-details:[^\\\"]+)\\\">Details</a>")
+            .find(compact)!!.groupValues[1]
+        val encodedDetails = detailsLink.removePrefix(MagoLintTooltip.PREFIX)
+        assertEquals(details, MagoLintTooltip.decode(encodedDetails))
+        assertTrue(compact.length < 4096)
+        assertFalse(details.contains("Bad example"))
+        assertFalse(details.contains("Good example"))
+    }
+
+    fun testExamplesAloneDoNotCreateAnEmptyRuleSection() {
+        val metadata = MagoRuleMetadata(
+            code = "example-only-rule", badExample = "bad sample", goodExample = "good sample",
+        )
+        val diagnostic = diagnostic(code = metadata.code, primary = null)
+        assertEquals(MagoLintTooltip.expanded(diagnostic), MagoLintTooltip.expanded(diagnostic, metadata))
     }
 
     fun testTooltipLinkDispatchAndMalformedPayloads() {

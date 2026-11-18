@@ -1,16 +1,21 @@
 package com.github.downace.stormfox.lint
 
+import java.awt.Color
 import java.nio.charset.StandardCharsets
 import java.util.Base64
+import javax.swing.UIManager
 
 internal object MagoDiagnosticTooltip {
     const val PREFIX = "stormfox-mago-details:"
     const val CONFIG_PREFIX = "stormfox-mago-config:"
 
-    fun compact(diagnostic: MagoDiagnosticReport.Diagnostic): String {
+    fun compact(
+        diagnostic: MagoDiagnosticReport.Diagnostic,
+        metadata: MagoRuleMetadata? = null,
+    ): String {
         val message = diagnostic.summary
         val code = diagnostic.code?.takeIf { it.isNotBlank() }?.let { " <code>${renderText(it)}</code>" }.orEmpty()
-        val extra = expanded(diagnostic)
+        val extra = expanded(diagnostic, matchingMetadata(diagnostic, metadata))
         val links = buildList {
             if (extra != null) add(detailsLink(extra))
             else add(configLink(diagnostic.source.command, diagnostic.code?.takeIf { it.isNotBlank() }))
@@ -19,7 +24,10 @@ internal object MagoDiagnosticTooltip {
         return "<html><b>Mago</b>: ${renderText(message)}$code$details</html>"
     }
 
-    fun expanded(diagnostic: MagoDiagnosticReport.Diagnostic): String? = buildString {
+    fun expanded(
+        diagnostic: MagoDiagnosticReport.Diagnostic,
+        metadata: MagoRuleMetadata? = null,
+    ): String? = buildString {
         var hasContent = false
         fun section(content: String) {
             append(content)
@@ -38,6 +46,9 @@ internal object MagoDiagnosticTooltip {
         }
         notes?.let {
             section("<p><icon src=\"com.intellij.icons.AllIcons.General.Information\" alt=\"Notes\"/>&nbsp;&nbsp;$it</p>")
+        }
+        matchingMetadata(diagnostic, metadata)?.let {
+            renderRuleMetadata(it).takeIf(String::isNotBlank)?.let(::section)
         }
         diagnostic.code?.takeIf { it.isNotBlank() }?.let {
             val source = diagnostic.source
@@ -77,12 +88,85 @@ internal object MagoDiagnosticTooltip {
     private fun configLink(tool: String, code: String?): String =
         "<a href=\"${configUrl(tool, code)}\">Open Mago config</a>"
 
+    private fun matchingMetadata(
+        diagnostic: MagoDiagnosticReport.Diagnostic,
+        metadata: MagoRuleMetadata?,
+    ): MagoRuleMetadata? = metadata?.takeIf {
+        diagnostic.source == MagoTool.LINT && diagnostic.code?.isNotBlank() == true && diagnostic.code == it.code
+    }
+
+    private fun renderRuleMetadata(metadata: MagoRuleMetadata): String {
+        val category = metadata.category.takeIf(String::isNotBlank)
+        val level = metadata.level.takeIf(String::isNotBlank)
+        val description = metadata.description.takeIf(String::isNotBlank)
+        if (metadata.name.isBlank() && category == null && level == null && description == null) return ""
+
+        val labelColor = colorHex(uiColor("Label.foreground", Color.BLACK))
+        return buildString {
+            val name = metadata.name.takeIf(String::isNotBlank)
+            if (name != null || category != null || level != null) {
+                append("<hr>")
+                append("<table cellpadding=\"3\" cellspacing=\"2\"><tr>")
+                name?.let {
+                    append("<td><b><font size=\"+1\">${renderText(it)}</font></b></td>")
+                }
+                category?.let { append(chip(it, categoryIcon(it), labelColor)) }
+                level?.let { append(chip("$it (default)", levelIcon(it), labelColor)) }
+                append("</tr></table>")
+            }
+            description?.let { append("<p>${renderRuleDescription(it)}</p>") }
+        }
+    }
+
+    private fun chip(label: String, icon: String?, foreground: String): String {
+        val background = colorHex(tint(uiColor("Panel.background", Color.WHITE), uiColor("Label.foreground", Color.BLACK)))
+        val iconMarkup = icon?.let { "<icon src=\"$it\" alt=\"\"/>&nbsp;" }.orEmpty()
+        return "<td bgcolor=\"$background\"><font color=\"$foreground\">$iconMarkup${renderText(label)}</font></td>"
+    }
+
+    private fun categoryIcon(category: String): String? = when (category.filter(Char::isLetterOrDigit).lowercase()) {
+        "bestpractices" -> "com.intellij.icons.AllIcons.Actions.IntentionBulb"
+        "clarity" -> "com.intellij.icons.AllIcons.General.InspectionsEye"
+        "consistency" -> "com.intellij.icons.AllIcons.Actions.ReformatCode"
+        "correctness" -> "com.intellij.icons.AllIcons.General.GreenCheckmark"
+        "deprecation" -> "com.intellij.icons.AllIcons.General.History"
+        "maintainability" -> "com.intellij.icons.AllIcons.Actions.RefactoringBulb"
+        "redundancy" -> "com.intellij.icons.AllIcons.Actions.Copy"
+        "safety" -> "com.intellij.icons.AllIcons.Nodes.SecurityRole"
+        "security" -> "com.intellij.icons.AllIcons.Nodes.Locked"
+        else -> null
+    }
+
+    private fun levelIcon(level: String): String? = when (level.lowercase()) {
+        "error" -> "com.intellij.icons.AllIcons.General.Error"
+        "warning" -> "com.intellij.icons.AllIcons.General.Warning"
+        "help" -> "com.intellij.icons.AllIcons.General.ContextHelp"
+        "note", "information", "info" -> "com.intellij.icons.AllIcons.General.Information"
+        else -> null
+    }
+
+    private fun uiColor(key: String, fallback: Color): Color = UIManager.getColor(key) ?: fallback
+
+    private fun tint(base: Color, accent: Color): Color = Color(
+        (base.red * 0.86 + accent.red * 0.14).toInt(),
+        (base.green * 0.86 + accent.green * 0.14).toInt(),
+        (base.blue * 0.86 + accent.blue * 0.14).toInt(),
+    )
+
+    private fun colorHex(color: Color): String = "#%02x%02x%02x".format(color.red, color.green, color.blue)
+
+    private fun renderRuleDescription(value: String): String =
+        Regex("\\*\\*(.+?)\\*\\*").replace(renderText(value)) { "<b>${it.groupValues[1]}</b>" }
+            .replace(Regex("(?<!\\*)\\*([^*]+)\\*(?!\\*)")) { "<i>${it.groupValues[1]}</i>" }
+
     private fun renderText(value: String): String {
-        val escaped = value.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
-            .replace("\"", "&quot;").replace("'", "&#39;")
+        val escaped = escapeHtml(value)
         return Regex("`([^`]+)`").replace(escaped) { "<code>${it.groupValues[1]}</code>" }
             .replace("\r\n", "\n").replace("\r", "\n").replace("\n", "<br>")
     }
+
+    private fun escapeHtml(value: String): String = value.replace("&", "&amp;").replace("<", "&lt;")
+        .replace(">", "&gt;").replace("\"", "&quot;").replace("'", "&#39;")
 
     private fun encodeFragment(value: String): String = value.toByteArray(StandardCharsets.UTF_8).joinToString("") {
         val byte = it.toInt() and 0xff

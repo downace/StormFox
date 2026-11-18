@@ -68,6 +68,10 @@ open class MagoDiagnosticAnnotator(
     }
 
     override fun doAnnotate(collectedInfo: Snapshot): Report? {
+        if (source == MagoTool.LINT) {
+            collectedInfo.project?.getService(MagoRuleMetadataService::class.java)
+                ?.request(collectedInfo.binary, collectedInfo.workingDirectory, collectedInfo.executionRoot)
+        }
         if (batch) return Report(collectedInfo, MagoDiagnosticRunner.run(collectedInfo.binary, collectedInfo.workingDirectory,
             collectedInfo.configPath, collectedInfo.logicalPath, collectedInfo.text, source, executionRoot = collectedInfo.executionRoot))
         else {
@@ -92,6 +96,8 @@ open class MagoDiagnosticAnnotator(
     private fun render(file: PsiFile, annotationResult: Report, holder: AnnotationHolder) {
         val snapshot = annotationResult.snapshot
         val service = snapshot.project?.getService(MagoDiagnosticService::class.java)
+        val metadata = if (source == MagoTool.LINT) snapshot.project?.getService(MagoRuleMetadataService::class.java) else null
+        fun rule(code: String?) = metadata?.cached(code, snapshot.binary, snapshot.workingDirectory, snapshot.executionRoot)
         val details = "file=${snapshot.logicalPath} tool=$source revision=${snapshot.revision} generation=${snapshot.generation} slot=${annotationResult.view?.slotId ?: "-"} retained=${annotationResult.retained}"
         fun skip(reason: String) { service?.trace("apply-skip $details reason=$reason") }
         val currentText = PsiDocumentManager.getInstance(file.project).getDocument(file)?.text ?: file.text
@@ -132,7 +138,7 @@ open class MagoDiagnosticAnnotator(
                     result.diagnostics.forEach {
                         val message = it.summary + (it.code?.let { code -> " [$code]" } ?: "")
                         annotation(message, inspection.severityFor(it.level, severity, file.project))
-                            .range(it.range).tooltip(MagoDiagnosticTooltip.compact(it)).create()
+                            .range(it.range).tooltip(MagoDiagnosticTooltip.compact(it, rule(it.code))).create()
                     }
                     return
                 }
@@ -158,7 +164,7 @@ open class MagoDiagnosticAnnotator(
                     val plainMessage = it.summary + (it.code?.let { code -> " [$code]" } ?: "")
                     val builder = annotation(plainMessage,
                         inspection.severityFor(it.level, severity, file.project))
-                        .range(it.range).tooltip(MagoDiagnosticTooltip.compact(it))
+                        .range(it.range).tooltip(MagoDiagnosticTooltip.compact(it, rule(it.code)))
                     if (it.relatedLocations.any { location -> location.filePath != null && location.range != null }) {
                         builder.registerFix(MagoShowRelatedLocationsAction(it.relatedLocations, it.snapshotHash, file.virtualFile))
                     }
