@@ -42,6 +42,9 @@ class MagoSettings : PersistentStateComponent<MagoSettings.State> {
         var enabled: Boolean = true
 
         @JvmField
+        var twigEnabled: Boolean? = null
+
+        @JvmField
         var showStatusWidget: Boolean = true
     }
 

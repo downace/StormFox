@@ -59,7 +59,7 @@ class MagoStatusSettingsNavigationTest : BasePlatformTestCase() {
 
     fun testInspectionNavigationPassesCurrentProfileAndSelectedTool() {
         val profile = InspectionProjectProfileManager.getInstance(project).currentProfile
-        val expectedNames = listOf("MagoLint", "MagoAnalyze", "MagoGuard")
+        val expectedNames = listOf("MagoLint", "MagoAnalyze", "MagoGuard", "MagoTwigLint")
         val calls = mutableListOf<String>()
 
         MagoTool.entries.forEach { tool ->

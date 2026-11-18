@@ -13,6 +13,9 @@ internal data class MagoVersion(val major: Int, val minor: Int, val patch: Int) 
     /** Filepath-aware formatter excludes are available starting with Mago 1.25.0. */
     val supportsFilepathAwareExcludes: Boolean get() = this >= FILEPATH_AWARE_EXCLUDES
 
+    /** Twig stdin formatting and linting were introduced together in Mago 1.60.0. */
+    val supportsTwig: Boolean get() = this >= MagoVersion(1, 60, 0)
+
     companion object {
         private val MINIMUM_SUPPORTED = MagoVersion(1, 18, 0)
         private val FILEPATH_AWARE_EXCLUDES = MagoVersion(1, 25, 0)

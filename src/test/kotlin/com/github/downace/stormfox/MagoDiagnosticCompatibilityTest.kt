@@ -9,6 +9,35 @@ import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 
 class MagoDiagnosticCompatibilityTest : BasePlatformTestCase() {
+    fun testOptionalTwigCliUsesStdinAndSourceWorkspace() {
+        val binary = System.getenv("STORMFOX_MAGO_TWIG_TEST_BINARY") ?: return
+        val directory = Files.createTempDirectory("stormfox-twig-")
+        val source = Files.createDirectory(directory.resolve("templates"))
+        val path = source.resolve("example.twig")
+        val config = directory.resolve("mago.toml")
+        val diskText = "{{ untouched }}"
+        try {
+            Files.writeString(path, diskText)
+            Files.writeString(config, "[source]\npaths = ['templates']\n")
+            val result = MagoDiagnosticRunner.run(binary, directory.toFile(), config.toString(), path.toString(),
+                "{% if %}", MagoTool.TWIG_LINT)
+            assertTrue("Expected Twig JSON report, got $result", result is MagoDiagnosticRunner.Result.Success)
+            assertTrue("Expected unsaved Twig diagnostics", (result as MagoDiagnosticRunner.Result.Success).diagnostics.isNotEmpty())
+            assertEquals(diskText, Files.readString(path))
+            Files.writeString(config, "[source]\npaths = ['templates']\nexcludes = ['templates/**']\n")
+            val excluded = MagoDiagnosticRunner.run(binary, directory.toFile(), config.toString(), path.toString(),
+                "{% if %}", MagoTool.TWIG_LINT)
+            assertTrue("Expected excluded Twig success, got $excluded", excluded is MagoDiagnosticRunner.Result.Success)
+            assertEmpty((excluded as MagoDiagnosticRunner.Result.Success).diagnostics)
+            assertEquals(diskText, Files.readString(path))
+        } finally {
+            Files.deleteIfExists(path)
+            Files.deleteIfExists(config)
+            Files.deleteIfExists(source)
+            Files.deleteIfExists(directory)
+        }
+    }
+
     fun testOptionalCliPreservesWarningsForExcludedSource() {
         val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
         val directory = Files.createTempDirectory("stormfox-excluded-")

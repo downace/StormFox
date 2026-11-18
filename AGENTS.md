@@ -2,9 +2,10 @@
 
 ## Decisions
 
-* **Two switches, one job each.** The native **Reformat code** in *Settings | Tools | Actions on
-  Save* decides whether a file is formatted on save; the plugin's **Use Mago formatter** decides
-  whether PHP files are formatted by mago or by the IDE's built-in formatter. The plugin registers
+* **Separate scheduling from formatter selection.** The native **Reformat code** in *Settings | Tools | Actions on
+  Save* decides whether a file is formatted on save; the plugin's **Use Mago formatter for**
+  checkboxes independently select Mago for PHP and Twig. Existing settings retain their previous
+  formatter choice for both languages until explicitly changed. The plugin registers
   no entry of its own in *Actions on Save* — two on-save paths would format the file twice.
   `testPluginDoesNotRegisterItsOwnActionsOnSaveEntry` guards it.
 * **Keep extension points focused.** `formattingService` and `projectConfigurable` handle formatting
@@ -17,8 +18,10 @@
   Plugin Verifier does not detect these ordering conflicts.
 * **Settings navigation must respect page initialization.** The string overload of
   `ShowSettingsUtil.showSettingsDialog` selects a display name, not a configurable ID.
-  Select Mago by its configurable class. Use the native inspection-settings action for a
-  specific inspection: the `showSettingsDialog` selection callback can run before its UI exists.
+  Select Mago by its configurable class. From the Mago settings page, initialize the Inspections
+  configurable in the current Settings window before selecting an inspection: completion of
+  `Settings.select` alone does not guarantee that its UI exists. Outside Settings, use the native
+  inspection-settings action; the `showSettingsDialog` selection callback can run too early.
 * **The plugin never writes to a file.** Formatting and inspections read the editor buffer
   through stdin. Formatting returns the result to the document; inspections return diagnostics.
 * **Independent inspections, shared execution.** `MagoLint`, `MagoAnalyze` and `MagoGuard` keep separate

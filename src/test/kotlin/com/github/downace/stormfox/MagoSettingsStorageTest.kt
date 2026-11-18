@@ -60,11 +60,29 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
         assertEquals(state.configPath, restored.configPath)
         assertEquals(state.executionRoot, restored.executionRoot)
         assertEquals(state.enabled, restored.enabled)
+        assertEquals(state.twigEnabled, restored.twigEnabled)
         assertEquals(state.showStatusWidget, restored.showStatusWidget)
     }
 
     fun testPreviouslySavedSettingsLoad() {
         assertPersistedSettingsLoad("")
+    }
+
+    fun testLegacyFormatterSettingAndExplicitTwigRoundTrip() {
+        for (enabled in listOf(false, true)) {
+            val xml = JDOMUtil.load("""<State><option name="enabled" value="$enabled" /></State>""")
+            val legacy = XmlSerializer.deserialize(xml, MagoSettings.State::class.java)
+            assertEquals(enabled, legacy.enabled)
+            assertNull(legacy.twigEnabled)
+            assertEquals(enabled, legacy.twigEnabled ?: legacy.enabled)
+
+            for (twigEnabled in listOf(false, true)) {
+                legacy.twigEnabled = twigEnabled
+                val restored = XmlSerializer.deserialize(XmlSerializer.serialize(legacy), MagoSettings.State::class.java)
+                assertEquals(enabled, restored.enabled)
+                assertEquals(twigEnabled, restored.twigEnabled)
+            }
+        }
     }
 
     fun testPreviouslySavedCallbackIsIgnored() {

@@ -1,6 +1,8 @@
 package com.github.downace.stormfox.lint
 
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.MagoVersionService
+import com.github.downace.stormfox.isTwigFile
 import com.intellij.codeInsight.daemon.HighlightDisplayKey
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.PriorityAction
@@ -45,9 +47,19 @@ open class MagoDiagnosticAnnotator(
     override fun collectInformation(file: PsiFile): Snapshot? {
         if (inspection(file, source, batchProfile) == null) return null
         val virtualFile = file.virtualFile ?: return null
-        if (!virtualFile.isInLocalFileSystem || file.language.id != "PHP") return null
+        if (!virtualFile.isInLocalFileSystem) return null
+        val twig = isTwigFile(file)
+        if (source == MagoTool.TWIG_LINT) {
+            if (!twig || file.language != file.viewProvider.baseLanguage) return null
+        } else if (twig || file.language.id != "PHP") return null
         val settings = MagoSettings.getInstance().state
         val workingDirectory = file.project.basePath?.let(::File) ?: File(virtualFile.path).parentFile ?: return null
+        if (source == MagoTool.TWIG_LINT && !batch) {
+            file.project.getService(MagoDiagnosticService::class.java)
+            val versions = MagoVersionService.getInstance()
+            versions.ensureInitialized(workingDirectory)
+            if (versions.cachedVersion(settings.magoPath.ifBlank { "mago" }, workingDirectory, settings.executionRoot)?.supportsTwig != true) return null
+        }
         val document = PsiDocumentManager.getInstance(file.project).getDocument(file)
         val text = document?.text ?: file.text
         return Snapshot(text, virtualFile.path, workingDirectory, settings.magoPath.ifBlank { "mago" }, settings.configPath,
@@ -150,7 +162,7 @@ open class MagoDiagnosticAnnotator(
                     if (it.relatedLocations.any { location -> location.filePath != null && location.range != null }) {
                         builder.registerFix(MagoShowRelatedLocationsAction(it.relatedLocations, it.snapshotHash, file.virtualFile))
                     }
-                    val suppressions = if (MagoSuppressAction.validCode(it.code)) MagoSuppressAction.Mode.entries.map { mode ->
+                    val suppressions = if (source != MagoTool.TWIG_LINT && MagoSuppressAction.validCode(it.code)) MagoSuppressAction.Mode.entries.map { mode ->
                         MagoSuppressAction(it, file.virtualFile, mode).asIntention()
                     } else emptyList()
                     it.fix?.let { fix ->
@@ -189,3 +201,4 @@ open class MagoDiagnosticAnnotator(
 class MagoLintAnnotator : MagoDiagnosticAnnotator(MagoTool.LINT)
 class MagoAnalyzeAnnotator : MagoDiagnosticAnnotator(MagoTool.ANALYZE)
 class MagoGuardAnnotator : MagoDiagnosticAnnotator(MagoTool.GUARD)
+class MagoTwigLintAnnotator : MagoDiagnosticAnnotator(MagoTool.TWIG_LINT)

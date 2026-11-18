@@ -263,6 +263,8 @@ class MagoDiagnosticStateTest : TestCase() {
             assertEquals(failure, state.request("file", MagoTool.ANALYZE, snapshot()))
             gates.getValue(MagoTool.GUARD).complete(empty)
             assertEquals(empty, state.request("file", MagoTool.GUARD, snapshot()))
+            gates.getValue(MagoTool.TWIG_LINT).complete(empty)
+            assertEquals(empty, state.request("file", MagoTool.TWIG_LINT, snapshot()))
             assertEquals(MagoTool.entries.toSet(), published.toSet())
             assertEquals(MagoTool.entries.size, starts)
         } finally { state.dispose(); scope.coroutineContext[Job]!!.cancel(null) }

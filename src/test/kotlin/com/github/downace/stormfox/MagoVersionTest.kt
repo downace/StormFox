@@ -13,6 +13,32 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
 class MagoVersionTest : BasePlatformTestCase() {
+    fun testBlankDiagnosticCommandSharesDefaultMagoVersionContext() {
+        val settings = MagoSettings.getInstance().state
+        val previous = settings.magoPath
+        val job = SupervisorJob()
+        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
+        try {
+            settings.magoPath = ""
+            val token = service.beginValidation("mago")
+            assertNotNull(token)
+            service.finish(token, "mago", MagoValidation.Result.Success("mago 1.60.0"))
+            assertEquals(MagoVersion(1, 60, 0), service.cachedVersion())
+            assertEquals(service.cachedVersion(), service.cachedVersion("mago", null, settings.executionRoot))
+        } finally {
+            settings.magoPath = previous
+            job.cancel()
+        }
+    }
+
+    fun testTwigCompatibilityStartsAt160WithoutChangingPhpSupport() {
+        assertTrue(MagoVersion(1, 59, 9).isSupported)
+        assertFalse(MagoVersion(1, 59, 9).supportsTwig)
+        assertTrue(MagoVersion(1, 60, 0).supportsTwig)
+        assertTrue(MagoVersion(1, 60, 1).supportsTwig)
+        assertTrue(MagoVersion(2, 0, 0).supportsTwig)
+    }
+
     fun testCacheNeverLooksUpSettingsWhileHoldingCacheMonitor() {
         val job = SupervisorJob()
         val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))

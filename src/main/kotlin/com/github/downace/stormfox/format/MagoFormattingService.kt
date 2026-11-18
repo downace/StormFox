@@ -9,6 +9,7 @@ import com.intellij.openapi.editor.Document
 import com.intellij.psi.PsiFile
 import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.MagoVersionService
+import com.github.downace.stormfox.isTwigFile
 import java.io.File
 
 class MagoFormattingService : AsyncDocumentFormattingService() {
@@ -17,8 +18,16 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
 
     override fun getFeatures(): Set<FormattingService.Feature> = emptySet()
 
-    override fun canFormat(file: PsiFile): Boolean =
-        MagoSettings.getInstance().state.enabled && file.language.id == PHP_LANGUAGE_ID
+    override fun canFormat(file: PsiFile): Boolean {
+        val settings = MagoSettings.getInstance().state
+        if (!isTwigFile(file)) return settings.enabled && file.language.id == PHP_LANGUAGE_ID
+        if (!(settings.twigEnabled ?: settings.enabled)) return false
+        val directory = file.project.basePath?.let(::File)
+        val versions = MagoVersionService.getInstance()
+        val version = versions.cachedVersion(directory)
+        if (version == null) versions.ensureInitialized(directory)
+        return version?.supportsTwig == true
+    }
 
     override fun getName(): String = TOOL_NAME
 
@@ -57,6 +66,7 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
             logicalPath = logicalPath,
             originalText = request.documentText,
             executionRoot = settings.executionRoot,
+            twig = isTwigFile(request.context.containingFile),
         )
     }
 
@@ -73,9 +83,10 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         private val logicalPath: String,
         private val originalText: String,
         private val executionRoot: String = "",
+        private val twig: Boolean = false,
         private val format: (MagoRunner.Cancellation) -> MagoRunner.Result = { cancellation ->
             val version = MagoVersionService.getInstance().cachedVersion(binary, workingDirectory, executionRoot)
-            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot, version)
+            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot, version, twig)
         },
     ) : AsyncDocumentFormattingService.FormattingTask {
 

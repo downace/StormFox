@@ -438,9 +438,11 @@ private val MagoTool.label: String get() = when (this) {
     MagoTool.LINT -> "Linter"
     MagoTool.ANALYZE -> "Analyzer"
     MagoTool.GUARD -> "Guard"
+    MagoTool.TWIG_LINT -> "Twig Linter"
 }
 private val MagoTool.inspectionShortName: String get() = when (this) {
     MagoTool.LINT -> "MagoLint"
     MagoTool.ANALYZE -> "MagoAnalyze"
     MagoTool.GUARD -> "MagoGuard"
+    MagoTool.TWIG_LINT -> "MagoTwigLint"
 }

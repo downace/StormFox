@@ -29,6 +29,8 @@ import kotlinx.coroutines.launch
 import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.MagoFailureLog
 import com.github.downace.stormfox.MagoFailureLogService
+import com.github.downace.stormfox.MagoVersionListener
+import com.intellij.openapi.fileEditor.FileEditorManager
 import java.io.File
 import java.util.Locale
 import java.nio.file.InvalidPathException
@@ -53,7 +55,7 @@ internal class MagoDependencyPaths(workingDirectory: File, configPath: String, b
         val location = normalize(path)
         return extension in setOf("toml", "yaml", "yml", "json") || name == "composer.lock" ||
             location != null && (location == config || location == binaryLocation) || name.substringBeforeLast('.') == binaryName ||
-            includePhp && extension in setOf("php", "phtml")
+            includePhp && extension in setOf("php", "phtml", "twig")
     }
 }
 
@@ -146,6 +148,17 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
         })
 
     init {
+        ApplicationManager.getApplication().messageBus.connect(this).subscribe(MagoVersionListener.TOPIC, object : MagoVersionListener {
+            override fun versionChanged() {
+                invalidateDependencies(reason = "version")
+                ApplicationManager.getApplication().invokeLater {
+                    if (disposed || project.isDisposed) return@invokeLater
+                    project.getService(FileEditorManager::class.java).openFiles
+                        .filter { it.isValid && it.name.endsWith(".twig", ignoreCase = true) }
+                        .forEach { file -> PsiManager.getInstance(project).findFile(file)?.let { DaemonCodeAnalyzer.getInstance(project).restart(it) } }
+                }
+            }
+        })
         EditorFactory.getInstance().eventMulticaster.addDocumentListener(object : DocumentListener {
             override fun documentChanged(event: DocumentEvent) {
                 FileDocumentManager.getInstance().getFile(event.document)?.let { file ->

@@ -1,21 +1,21 @@
 package com.github.downace.stormfox.settings
 
 import com.intellij.icons.AllIcons
+import com.intellij.ide.DataManager
 import com.intellij.ide.actionsOnSave.ActionsOnSaveConfigurable
 import com.intellij.openapi.progress.ProcessCanceledException
 import java.util.concurrent.CancellationException
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
-import com.intellij.openapi.options.ex.ConfigurableExtensionPointUtil
+import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.project.Project
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurable
-import com.intellij.profile.codeInspection.ui.ErrorsConfigurableProvider
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
-import com.jetbrains.php.lang.inspections.PhpInspectionsUtil
+import com.intellij.ui.components.labels.LinkLabel
 import com.intellij.util.ui.InlineIconButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -38,16 +38,18 @@ import javax.swing.event.DocumentEvent
 
 private const val NOT_VALIDATED_TEXT = "Not validated"
 private const val CHECKING_TEXT = "Checking…"
-private const val SECTION_GAP = 8
+private const val SECTION_GAP = 12
+private const val OPTION_ROW_GAP = 8
+private const val CONTENT_INDENT = 24
 private const val HINT_INDENT = 20
 private const val MAX_STATUS_TEXT_LENGTH = 120
 private const val MAX_STATUS_WIDTH = 400
 private const val ELLIPSIS = "…"
 private const val SECTION_TITLE = "Formatter"
-private const val LINTER_SECTION_TITLE = "Linter"
-private const val ANALYZER_SECTION_TITLE = "Analyzer"
-private const val GUARD_SECTION_TITLE = "Guard"
+private const val INSPECTIONS_SECTION_TITLE = "Inspections"
+private const val INSPECTIONS_CONFIGURABLE_ID = "Errors"
 private const val FORMATTER_HINT = "Mago replaces the IDE code style settings for PHP files."
+private const val TWIG_SUPPORT_HINT = "Twig formatting requires Mago 1.60 or newer."
 private const val FORMATTER_ON_SAVE_PREFIX = "<html>Enable&nbsp;<b>Reformat code</b>&nbsp;in&nbsp;</html>"
 private const val FORMATTER_ON_SAVE_LINK_SUFFIX = "\u00a0to format files on save."
 
@@ -55,14 +57,19 @@ private val SECONDARY_TEXT_COLOR: Color = UIUtil.getContextHelpForeground()
 private val ERROR_TEXT_COLOR: Color = JBColor.namedColor("Label.errorForeground", UIUtil.getErrorForeground())
 private val SEPARATOR_COLOR: Color = JBColor.namedColor("Group.separatorColor", JBColor.GRAY)
 
-class MagoConfigurable(private val project: Project) : Configurable {
+class MagoConfigurable @JvmOverloads constructor(
+    private val project: Project,
+    private val settingsForComponent: (JComponent) -> Settings? = {
+        Settings.KEY.getData(DataManager.getInstance().getDataContext(it))
+    },
+) : Configurable {
 
     private var ui: SettingsUi? = null
 
     override fun getDisplayName(): String = "Mago"
 
     override fun createComponent(): JComponent {
-        val settingsUi = ui ?: SettingsUi(project, project.getService(MagoSettingsValidationService::class.java).createSession()).also { ui = it }
+        val settingsUi = ui ?: SettingsUi(project, project.getService(MagoSettingsValidationService::class.java).createSession(), settingsForComponent).also { ui = it }
         settingsUi.reset()
         return settingsUi.panel
     }
@@ -82,11 +89,12 @@ class MagoConfigurable(private val project: Project) : Configurable {
         ui = null
     }
 
-    private class SettingsUi(private val project: Project, private val validation: MagoSettingsValidationService.Session) {
+    private class SettingsUi(private val project: Project, private val validation: MagoSettingsValidationService.Session, private val settingsForComponent: (JComponent) -> Settings?) {
 
         fun dispose() = validation.dispose()
 
-        private val enabledCheckBox = JBCheckBox("Use Mago formatter")
+        private val phpFormatterCheckBox = JBCheckBox("PHP")
+        private val twigFormatterCheckBox = JBCheckBox("Twig")
         private val showStatusWidgetCheckBox = JBCheckBox("Show Mago status bar widget")
 
         private val binaryField = TextFieldWithBrowseButton().apply {
@@ -154,12 +162,25 @@ class MagoConfigurable(private val project: Project) : Configurable {
         private val formatterBlock: JComponent = JPanel(GridBagLayout()).apply {
             add(
                 sectionRule(SECTION_TITLE),
-                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, JBUI.scale(SECTION_GAP), 0)),
+                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(SECTION_GAP, 0, SECTION_GAP, 0)),
             )
-            add(enabledCheckBox, cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
+            add(
+                JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
+                    add(JBLabel("Use Mago formatter for:"))
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    add(phpFormatterCheckBox)
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    add(twigFormatterCheckBox)
+                },
+                cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, CONTENT_INDENT, 0, 0)),
+            )
             add(
                 hint(FORMATTER_HINT),
-                cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, JBUI.scale(HINT_INDENT), 0, 0)),
+                cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, CONTENT_INDENT + HINT_INDENT, 0, 0)),
+            )
+            add(
+                hint(TWIG_SUPPORT_HINT),
+                cell(gridx = 0, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(2, CONTENT_INDENT + HINT_INDENT, 0, 0)),
             )
             add(
                 JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
@@ -172,15 +193,34 @@ class MagoConfigurable(private val project: Project) : Configurable {
                     )
                     add(JBLabel(FORMATTER_ON_SAVE_LINK_SUFFIX))
                 },
-                cell(gridx = 0, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(6, 0, 0, 0)),
+                cell(gridx = 0, gridy = 4, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(OPTION_ROW_GAP, CONTENT_INDENT, 0, 0)),
             )
         }
 
-        private val linterBlock = inspectionBlock(LINTER_SECTION_TITLE, "MagoLint")
-
-        private val analyzerBlock = inspectionBlock(ANALYZER_SECTION_TITLE, "MagoAnalyze")
-
-        private val guardBlock = inspectionBlock(GUARD_SECTION_TITLE, "MagoGuard")
+        private val inspectionsBlock: JComponent = JPanel(GridBagLayout()).apply {
+            add(
+                sectionRule(INSPECTIONS_SECTION_TITLE),
+                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(SECTION_GAP, 0, SECTION_GAP, 0)),
+            )
+            add(
+                JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
+                    inspectionLink("Linter", "MagoLint")
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    add(JBLabel("·"))
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    inspectionLink("Analyzer", "MagoAnalyze")
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    add(JBLabel("·"))
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    inspectionLink("Guard", "MagoGuard")
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    add(JBLabel("·"))
+                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
+                    inspectionLink("Twig Linter", "MagoTwigLint")
+                },
+                cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, CONTENT_INDENT, 0, 0)),
+            )
+        }
 
         init {
             val markValidationStale = object : DocumentAdapter() {
@@ -202,9 +242,7 @@ class MagoConfigurable(private val project: Project) : Configurable {
                 JPanel(GridBagLayout()).apply {
                     add(generalBlock, cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
                     add(formatterBlock, cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
-                    add(linterBlock, cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
-                    add(analyzerBlock, cell(gridx = 0, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
-                    add(guardBlock, cell(gridx = 0, gridy = 4, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
+                    add(inspectionsBlock, cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
                 },
                 BorderLayout.NORTH,
             )
@@ -212,7 +250,8 @@ class MagoConfigurable(private val project: Project) : Configurable {
 
         fun isModified(): Boolean {
             val state = MagoSettings.getInstance().state
-            return enabledCheckBox.isSelected != state.enabled ||
+            return phpFormatterCheckBox.isSelected != state.enabled ||
+                twigFormatterCheckBox.isSelected != (state.twigEnabled ?: state.enabled) ||
                 binaryField.text.trim() != state.magoPath.trim() ||
                 configField.text.trim() != state.configPath.trim() ||
                 executionRootField.text.trim() != state.executionRoot.trim() ||
@@ -221,7 +260,8 @@ class MagoConfigurable(private val project: Project) : Configurable {
 
         fun apply() {
             val state = MagoSettings.getInstance().state
-            state.enabled = enabledCheckBox.isSelected
+            state.enabled = phpFormatterCheckBox.isSelected
+            state.twigEnabled = twigFormatterCheckBox.isSelected
             state.magoPath = binaryField.text.trim()
             state.configPath = configField.text.trim()
             state.executionRoot = executionRootField.text.trim()
@@ -233,7 +273,8 @@ class MagoConfigurable(private val project: Project) : Configurable {
 
         fun reset() {
             val state = MagoSettings.getInstance().state
-            enabledCheckBox.isSelected = state.enabled
+            phpFormatterCheckBox.isSelected = state.enabled
+            twigFormatterCheckBox.isSelected = state.twigEnabled ?: state.enabled
             binaryField.text = state.magoPath
             configField.text = state.configPath
             executionRootField.text = state.executionRoot
@@ -268,25 +309,18 @@ class MagoConfigurable(private val project: Project) : Configurable {
             }
         }
 
-        private fun inspectionBlock(title: String, inspectionTool: String): JComponent = JPanel(GridBagLayout()).apply {
-            add(
-                sectionRule(title),
-                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, JBUI.scale(SECTION_GAP), 0)),
-            )
-            add(
-                PhpInspectionsUtil.createPanelWithSettingsLink(
-                    "Mago $title inspection",
-                    ErrorsConfigurable::class.java,
-                    { targetProject ->
-                        ConfigurableExtensionPointUtil.createProjectConfigurableForProvider(
-                            targetProject,
-                            ErrorsConfigurableProvider::class.java,
-                        ) as ErrorsConfigurable
-                    },
-                    { it.selectInspectionTool(inspectionTool) },
-                ),
-                cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL),
-            )
+        private fun JPanel.inspectionLink(label: String, inspectionTool: String) {
+            add(LinkLabel.create(label) {
+                val settings = settingsForComponent(this)
+                val inspections = settings?.find(ErrorsConfigurable::class.java)
+                if (inspections != null) {
+                    settings.select(inspections).doWhenDone {
+                        if (settings.getConfigurableWithInitializedUiComponent(INSPECTIONS_CONFIGURABLE_ID, true) != null) {
+                            inspections.selectInspectionTool(inspectionTool)
+                        }
+                    }
+                }
+            })
         }
 
         private fun cell(

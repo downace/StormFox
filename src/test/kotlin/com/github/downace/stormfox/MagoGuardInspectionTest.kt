@@ -94,7 +94,7 @@ class MagoGuardInspectionTest : BasePlatformTestCase() {
         myFixture.configureByText("Sample.php", "<?php echo 1;")
         myFixture.enableInspections(MagoLintInspection(), MagoAnalyzeInspection(), guard)
         val profile = InspectionProjectProfileManager.getInstance(project).currentProfile
-        val tools = MagoTool.entries.associateWith {
+        val tools = listOf(MagoTool.LINT, MagoTool.ANALYZE, MagoTool.GUARD).associateWith {
             profile.getInspectionTool(it.shortName, myFixture.file)!!.tool as MagoDiagnosticInspection
         }
         tools.getValue(MagoTool.GUARD).apply {

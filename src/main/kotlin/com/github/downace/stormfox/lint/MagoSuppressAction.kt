@@ -80,6 +80,7 @@ internal class MagoSuppressAction(
                 MagoTool.LINT -> "lint"
                 MagoTool.ANALYZE -> "analysis"
                 MagoTool.GUARD -> "guard"
+                MagoTool.TWIG_LINT -> return null
             }
             if (lineStart > 0) {
                 val previousEnd = lineStart - 1

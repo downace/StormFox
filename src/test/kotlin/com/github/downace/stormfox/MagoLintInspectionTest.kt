@@ -49,8 +49,11 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         myFixture.configureByText("Sample.php", text)
         myFixture.enableInspections(MagoLintInspection(),
             com.github.downace.stormfox.lint.MagoAnalyzeInspection(),
-            com.github.downace.stormfox.lint.MagoGuardInspection())
+            com.github.downace.stormfox.lint.MagoGuardInspection(),
+            com.github.downace.stormfox.lint.MagoTwigLintInspection())
         for (source in com.github.downace.stormfox.lint.MagoTool.entries) {
+            myFixture.configureByText(
+                if (source == com.github.downace.stormfox.lint.MagoTool.TWIG_LINT) "Sample.twig" else "Sample.php", text)
             for (primary in listOf("This must be declared as `final`", null, " \t", "Structural flaw in App\\Models\\Shipment")) {
                 val message = "Structural flaw in App\\Models\\Shipment"
                 val diagnostic = MagoLintReport.Diagnostic(TextRange(6, 10), message, "must-be-final",

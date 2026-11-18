@@ -3,6 +3,8 @@ package com.github.downace.stormfox.lint
 import com.github.downace.stormfox.MagoExecutionContext
 import com.github.downace.stormfox.MagoFailureLog
 import com.github.downace.stormfox.MagoFailureLogService
+import com.github.downace.stormfox.MagoVersion
+import com.github.downace.stormfox.format.MagoValidation
 import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
@@ -69,6 +71,11 @@ internal object MagoDiagnosticRunner {
             return Result.Failure(message)
         }
         val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
+        if (tool == MagoTool.TWIG_LINT) {
+            val validation = MagoValidation.checkBinary(binary, workingDirectory, executionRoot)
+            val version = (validation as? MagoValidation.Result.Success)?.let { MagoVersion.parse(it.message) }
+            if (version?.supportsTwig != true) return Result.Success(emptyList())
+        }
         val globals = try { globalArguments(context, configPath) }
         catch (e: IllegalArgumentException) {
             log.debug("invalid diagnostic command", e)

@@ -15,4 +15,6 @@ enum class MagoTool(
         "https://mago.carthage.software/latest/en/tools/analyzer/overview/", "Analyzer documentation"),
     GUARD("guard", "MagoGuard", "Mago Guard validation", 300_000,
         "https://mago.carthage.software/latest/en/tools/guard/overview/", "Guard documentation"),
+    TWIG_LINT("twig:lint", "MagoTwigLint", "Mago Twig Linter validation", 30_000,
+        "https://mago.carthage.software/latest/en/tools/twig-linter/", "Twig linter documentation"),
 }

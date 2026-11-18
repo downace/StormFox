@@ -74,6 +74,7 @@ internal object MagoRunner {
         cancellation: Cancellation = Cancellation(),
         executionRoot: String = "",
         cachedVersion: MagoVersion? = null,
+        twig: Boolean = logicalPath.endsWith(".twig", ignoreCase = true),
     ): Result {
         cancellation.checkCanceled()
         val log = MagoFailureLogService.get()
@@ -93,8 +94,11 @@ internal object MagoRunner {
             is VersionResult.Failure -> return failed("version", probe.category, probe.message)
         }
         log.success(key, "format", "version")
+        if (twig && !version.supportsTwig) {
+            return failed("version", "unsupported-twig", "Twig formatting requires Mago 1.60.0 or newer.")
+        }
         val arguments = try {
-            buildArguments(context, configPath, logicalPath, version)
+            buildArguments(context, configPath, logicalPath, version, twig)
         } catch (e: IllegalArgumentException) {
             return failed("command", "invalid", e.message ?: "Invalid Mago command")
         }
@@ -191,15 +195,15 @@ internal object MagoRunner {
         }
     }
 
-    private fun buildArguments(context: MagoExecutionContext, configPath: String, logicalPath: String, version: MagoVersion): List<String> {
+    private fun buildArguments(context: MagoExecutionContext, configPath: String, logicalPath: String, version: MagoVersion, twig: Boolean): List<String> {
         val arguments = mutableListOf<String>()
         if (configPath.isNotBlank()) {
             // Global flags have to come before the subcommand.
             arguments += "--config"
             arguments += context.toExecution(configPath)
         }
-        arguments += listOf("format", "--stdin-input")
-        if (version.supportsFilepathAwareExcludes) {
+        arguments += listOf(if (twig) "twig:fmt" else "format", "--stdin-input")
+        if (twig || version.supportsFilepathAwareExcludes) {
             arguments += listOf("--stdin-filepath", context.toExecution(logicalPath))
         }
         return context.command() + arguments

@@ -43,7 +43,7 @@ abstract class MagoDiagnosticInspection(private val source: MagoTool) : LocalIns
     override fun getShortName(): String = source.shortName
     override fun getDisplayName(): String = source.displayName
     override fun getGroupDisplayName(): String = "Quality tools"
-    override fun getGroupPath(): Array<String> = arrayOf("PHP", groupDisplayName)
+    override fun getGroupPath(): Array<String> = arrayOf(if (source == MagoTool.TWIG_LINT) "Twig" else "PHP", groupDisplayName)
     override fun isEnabledByDefault(): Boolean = false
     override fun loadDescription(): String? =
         javaClass.classLoader.getResourceAsStream("inspectionDescriptions/${source.shortName}.html")

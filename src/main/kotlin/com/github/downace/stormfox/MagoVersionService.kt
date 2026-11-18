@@ -35,7 +35,7 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
     internal var failureLogForTest: MagoFailureLog? = null
 
     private fun key(command: String, directory: File?, root: String) =
-        Key(command.trim(), directory?.toPath()?.toAbsolutePath()?.normalize()?.toString(), root.trim())
+        Key(command.trim().ifBlank { "mago" }, directory?.toPath()?.toAbsolutePath()?.normalize()?.toString(), root.trim())
 
     private fun current(directory: File?): Key = MagoSettings.getInstance().state.snapshot().let {
         key(it.command, directory, it.executionRoot)
