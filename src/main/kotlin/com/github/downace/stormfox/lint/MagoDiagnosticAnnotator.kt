@@ -52,11 +52,11 @@ open class MagoDiagnosticAnnotator(
         if (source == MagoTool.TWIG_LINT) {
             if (!twig || file.language != file.viewProvider.baseLanguage) return null
         } else if (twig || file.language.id != "PHP") return null
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(file.project).state
         val workingDirectory = file.project.basePath?.let(::File) ?: File(virtualFile.path).parentFile ?: return null
         if (source == MagoTool.TWIG_LINT && !batch) {
             file.project.getService(MagoDiagnosticService::class.java)
-            val versions = MagoVersionService.getInstance()
+            val versions = MagoVersionService.getInstance(file.project)
             versions.ensureInitialized(workingDirectory)
             if (versions.cachedVersion(settings.magoPath.ifBlank { "mago" }, workingDirectory, settings.executionRoot)?.supportsTwig != true) return null
         }
@@ -105,7 +105,7 @@ open class MagoDiagnosticAnnotator(
         val document = PsiDocumentManager.getInstance(file.project).getDocument(file)
         if (snapshot.revision >= 0 && document?.modificationStamp != snapshot.revision) { skip("revision"); return }
         if (snapshot.project != null) {
-            val settings = MagoSettings.getInstance().state
+            val settings = MagoSettings.getInstance(file.project).state
             if (snapshot.binary != settings.magoPath.ifBlank { "mago" } || snapshot.configPath != settings.configPath ||
                 snapshot.executionRoot != settings.executionRoot ||
                 snapshot.generation != file.project.getService(MagoDiagnosticService::class.java).epoch) { skip("settings-or-generation"); return }

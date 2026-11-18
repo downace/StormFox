@@ -19,11 +19,11 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
     override fun getFeatures(): Set<FormattingService.Feature> = emptySet()
 
     override fun canFormat(file: PsiFile): Boolean {
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(file.project).state
         if (!isTwigFile(file)) return settings.enabled && file.language.id == PHP_LANGUAGE_ID
         if (!(settings.twigEnabled ?: settings.enabled)) return false
         val directory = file.project.basePath?.let(::File)
-        val versions = MagoVersionService.getInstance()
+        val versions = MagoVersionService.getInstance(file.project)
         val version = versions.cachedVersion(directory)
         if (version == null) versions.ensureInitialized(directory)
         return version?.supportsTwig == true
@@ -41,7 +41,7 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
     override fun prepareForFormatting(document: Document, formattingContext: FormattingContext) = Unit
 
     override fun createFormattingTask(request: AsyncFormattingRequest): FormattingTask? {
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(request.context.project).state
         if (settings.magoPath.isBlank()) {
             request.onError(TOOL_NAME, "The Mago command is not configured. Set it in $SETTINGS_LOCATION.")
             return null
@@ -85,7 +85,7 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         private val executionRoot: String = "",
         private val twig: Boolean = false,
         private val format: (MagoRunner.Cancellation) -> MagoRunner.Result = { cancellation ->
-            val version = MagoVersionService.getInstance().cachedVersion(binary, workingDirectory, executionRoot)
+            val version = MagoVersionService.getInstance(request.context.project).cachedVersion(binary, workingDirectory, executionRoot)
             MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot, version, twig)
         },
     ) : AsyncDocumentFormattingService.FormattingTask {

@@ -114,7 +114,7 @@ class MagoConfigurable @JvmOverloads constructor(
             field = binaryField,
             tooltip = "Check that the Mago command can be started",
             check = { binary, _, projectDirectory, executionRoot ->
-                MagoValidation.checkBinary(binary, projectDirectory, executionRoot)
+                MagoValidation.checkBinary(binary, projectDirectory, executionRoot, project)
             },
         )
 
@@ -249,7 +249,7 @@ class MagoConfigurable @JvmOverloads constructor(
         }
 
         fun isModified(): Boolean {
-            val state = MagoSettings.getInstance().state
+            val state = MagoSettings.getInstance(project).state
             return phpFormatterCheckBox.isSelected != state.enabled ||
                 twigFormatterCheckBox.isSelected != (state.twigEnabled ?: state.enabled) ||
                 binaryField.text.trim() != state.magoPath.trim() ||
@@ -259,7 +259,7 @@ class MagoConfigurable @JvmOverloads constructor(
         }
 
         fun apply() {
-            val state = MagoSettings.getInstance().state
+            val state = MagoSettings.getInstance(project).state
             state.enabled = phpFormatterCheckBox.isSelected
             state.twigEnabled = twigFormatterCheckBox.isSelected
             state.magoPath = binaryField.text.trim()
@@ -272,7 +272,7 @@ class MagoConfigurable @JvmOverloads constructor(
         }
 
         fun reset() {
-            val state = MagoSettings.getInstance().state
+            val state = MagoSettings.getInstance(project).state
             phpFormatterCheckBox.isSelected = state.enabled
             twigFormatterCheckBox.isSelected = state.twigEnabled ?: state.enabled
             binaryField.text = state.magoPath

@@ -41,7 +41,7 @@ internal class MagoSchemaProjectService(private val project: Project, private va
     @Synchronized
     fun provider(): MagoJsonSchemaProvider {
         instance?.let { return it }
-        ApplicationManager.getApplication().messageBus.connect(scope).subscribe(
+        project.messageBus.connect(scope).subscribe(
             MagoVersionListener.TOPIC,
             object : MagoVersionListener {
                 override fun versionChanged() = resetSchema()
@@ -60,7 +60,7 @@ internal class MagoSchemaProjectService(private val project: Project, private va
 class MagoJsonSchemaProvider internal constructor(
     private val project: Project,
     private val baseUrl: String = "https://mago.carthage.software",
-    private val version: () -> String? = { MagoVersionService.getInstance().cachedVersion(project.basePath?.let(::File))?.toString() },
+    private val version: () -> String? = { MagoVersionService.getInstance(project).cachedVersion(project.basePath?.let(::File))?.toString() },
     private val onChange: () -> Unit = {
         if (!project.isDisposed) JsonSchemaService.Impl.get(project).reset()
     },

@@ -78,7 +78,7 @@ class TwigFormattingTest {
         fun testRunner() = checkRunner()
         fun testRealRunner() = checkRealRunner()
         fun testSelection() {
-            val settings = MagoSettings.getInstance().state
+            val settings = MagoSettings.getInstance(project).state
             val previousEnabled = settings.enabled
             val previousTwigEnabled = settings.twigEnabled
             val previousPath = settings.magoPath
@@ -86,7 +86,7 @@ class TwigFormattingTest {
                 settings.enabled = true
                 settings.twigEnabled = null
                 settings.magoPath = "twig-selection-test"
-                val versions = MagoVersionService.getInstance()
+                val versions = MagoVersionService.getInstance(project)
                 val directory = project.basePath?.let(::File)
                 val service = MagoFormattingService()
                 val twig = myFixture.configureByText("view.TWIG", "{{ value }}")

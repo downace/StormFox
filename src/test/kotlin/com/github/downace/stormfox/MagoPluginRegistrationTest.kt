@@ -56,7 +56,7 @@ class MagoPluginRegistrationTest : BasePlatformTestCase() {
 
     fun testServiceOnlyClaimsPhpFilesWhenEnabled() {
         val service = MagoFormattingService()
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val original = settings.enabled
 
         try {

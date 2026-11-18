@@ -48,7 +48,7 @@ internal class MagoRuleMetadataService(private val project: Project, private val
     @Volatile internal var refreshForTest: (() -> Unit)? = null
 
     init {
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(MagoVersionListener.TOPIC, object : MagoVersionListener {
+        project.messageBus.connect(this).subscribe(MagoVersionListener.TOPIC, object : MagoVersionListener {
             override fun versionChanged() {
                 synchronized(this@MagoRuleMetadataService) {
                     generation++
@@ -64,10 +64,10 @@ internal class MagoRuleMetadataService(private val project: Project, private val
     }
 
     fun request(command: String, directory: File, root: String) {
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         if (command.trim() != settings.magoPath.ifBlank { "mago" }.trim() || root.trim() != settings.executionRoot.trim()) return
         val next = MagoRuleMetadataKey(command.trim(), directory.absoluteFile.normalize().path, root.trim(),
-            MagoVersionService.getInstance().cachedVersion(command, directory, root))
+            MagoVersionService.getInstance(project).cachedVersion(command, directory, root))
         synchronized(this) {
             if (key != next) {
                 generation++
@@ -106,7 +106,7 @@ internal class MagoRuleMetadataService(private val project: Project, private val
     @Synchronized fun cached(code: String?, command: String, directory: File, root: String): MagoRuleMetadata? {
         val current = key ?: return null
         if (current.command != command.trim() || current.directory != directory.absoluteFile.normalize().path || current.root != root.trim() ||
-            current.version != MagoVersionService.getInstance().cachedVersion(command, directory, root)) return null
+            current.version != MagoVersionService.getInstance(project).cachedVersion(command, directory, root)) return null
         return code?.let { catalogue?.get(it) }
     }
 

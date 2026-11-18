@@ -13,6 +13,7 @@ import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
+import com.intellij.openapi.project.Project
 import java.nio.charset.StandardCharsets
 import java.io.File
 import java.util.concurrent.CancellationException
@@ -28,11 +29,11 @@ internal object MagoValidation {
         data class Failure(val message: String) : Result
     }
 
-    fun checkBinary(binaryPath: String, projectDirectory: File? = null, executionRoot: String = ""): Result {
-        val service = MagoVersionService.getInstance()
-        val token = service.beginValidation(binaryPath, projectDirectory, executionRoot)
+    fun checkBinary(binaryPath: String, projectDirectory: File? = null, executionRoot: String = "", project: Project? = null): Result {
+        val service = project?.let { MagoVersionService.getInstance(it) }
+        val token = service?.beginValidation(binaryPath, projectDirectory, executionRoot)
         val result = checkBinaryUncached(binaryPath, projectDirectory, executionRoot)
-        service.finish(token, binaryPath, result, projectDirectory, executionRoot)
+        service?.finish(token, binaryPath, result, projectDirectory, executionRoot)
         return result
     }
 

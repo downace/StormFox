@@ -12,11 +12,11 @@ import java.io.File
 
 class MagoFormatterVersionCacheTest : BasePlatformTestCase() {
     fun testOnlyCurrentValidVersionRecoversValidationFailureEvenWhenUnchanged() {
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val oldCommand = state.magoPath
         val oldRoot = state.executionRoot
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
         val events = mutableListOf<MagoFailureLog.Level>()
         val failureLog = MagoFailureLog({ level, _ -> events.add(level) })
         service.failureLogForTest = failureLog
@@ -42,11 +42,11 @@ class MagoFormatterVersionCacheTest : BasePlatformTestCase() {
     }
 
     fun testOnlyAcceptedChangedVersionsAreAnnounced() {
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val oldCommand = state.magoPath
         val oldRoot = state.executionRoot
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
         val accepted = mutableListOf<MagoVersion>()
         service.acceptedVersionForTest = { accepted.add(it) }
         try {
@@ -71,11 +71,11 @@ class MagoFormatterVersionCacheTest : BasePlatformTestCase() {
     }
 
     fun testExplicitLookupRequiresMatchingCommandDirectoryAndRoot() {
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val oldCommand = state.magoPath
         val oldRoot = state.executionRoot
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
         val directory = File("formatter-project").absoluteFile
         try {
             state.magoPath = "docker compose exec app mago"

@@ -3,11 +3,9 @@ package com.github.downace.stormfox
 import com.github.downace.stormfox.format.MagoValidation
 import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.settings.MagoSettingsSnapshot
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.project.ProjectManager
 import com.intellij.openapi.startup.ProjectActivity
 import com.intellij.util.messages.Topic
 import kotlinx.coroutines.CoroutineScope
@@ -17,8 +15,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import java.io.File
 
-@Service(Service.Level.APP)
-internal class MagoVersionService(private val scope: CoroutineScope) {
+@Service(Service.Level.PROJECT)
+internal class MagoVersionService(private val project: Project, private val scope: CoroutineScope) {
     private data class Key(val command: String, val directory: String?, val root: String)
     private data class Entry(val token: Long, var version: MagoVersion? = null)
     private val entries = LinkedHashMap<Key, Entry>(16, 0.75f, true)
@@ -37,7 +35,7 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
     private fun key(command: String, directory: File?, root: String) =
         Key(command.trim().ifBlank { "mago" }, directory?.toPath()?.toAbsolutePath()?.normalize()?.toString(), root.trim())
 
-    private fun current(directory: File?): Key = MagoSettings.getInstance().state.snapshot().let {
+    private fun current(directory: File?): Key = MagoSettings.getInstance(project).state.snapshot().let {
         key(it.command, directory, it.executionRoot)
     }
 
@@ -63,8 +61,7 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
             pendingRefresh = scope.launch {
                 delay(300)
                 if (current(null) != key(binaryPath, null, root)) return@launch
-                val directories = projectDirectoriesForTest?.invoke() ?: ProjectManager.getInstance().openProjects
-                    .filterNot { it.isDisposed }.mapNotNull { it.basePath?.let(::File) }
+                val directories = projectDirectoriesForTest?.invoke() ?: listOfNotNull(project.basePath?.let(::File))
                 directories.filter { it.isDirectory }.distinctBy { it.toPath().toAbsolutePath().normalize() }
                     .forEach { ensureInitialized(it) }
                 if (safeWithoutProject(binaryPath, root)) ensureInitialized()
@@ -95,7 +92,7 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
         launchRefresh(context.command, directory, context.root, token)
     }
 
-    fun beginValidation(binaryPath: String, directory: File? = null, executionRoot: String = MagoSettings.getInstance().state.executionRoot): Long? {
+    fun beginValidation(binaryPath: String, directory: File? = null, executionRoot: String = MagoSettings.getInstance(project).state.executionRoot): Long? {
         val context = key(binaryPath, directory, executionRoot)
         val settingsContext = current(directory)
         return synchronized(this) {
@@ -112,7 +109,7 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
     }
 
     fun finish(token: Long?, binaryPath: String, result: MagoValidation.Result, directory: File? = null,
-               executionRoot: String = MagoSettings.getInstance().state.executionRoot) {
+               executionRoot: String = MagoSettings.getInstance(project).state.executionRoot) {
         val context = key(binaryPath, directory, executionRoot)
         val settingsContext = current(directory)
         val changed = synchronized(this) {
@@ -141,7 +138,7 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
     }
 
     private fun publishChange() {
-        ApplicationManager.getApplication().messageBus.syncPublisher(MagoVersionListener.TOPIC).versionChanged()
+        project.messageBus.syncPublisher(MagoVersionListener.TOPIC).versionChanged()
     }
 
     companion object {
@@ -154,8 +151,8 @@ internal class MagoVersionService(private val scope: CoroutineScope) {
             return value.none { it.isWhitespace() || it == '"' || it == '\'' || it == '/' || it == '\\' }
         }
 
-        fun getInstance(): MagoVersionService =
-            ApplicationManager.getApplication().getService(MagoVersionService::class.java)
+        fun getInstance(project: Project): MagoVersionService =
+            project.getService(MagoVersionService::class.java)
     }
 }
 
@@ -168,6 +165,6 @@ internal interface MagoVersionListener {
 
 internal class MagoVersionProjectStartup : ProjectActivity {
     override suspend fun execute(project: Project) {
-        MagoVersionService.getInstance().ensureInitialized(project.basePath?.let(::File))
+        MagoVersionService.getInstance(project).ensureInitialized(project.basePath?.let(::File))
     }
 }

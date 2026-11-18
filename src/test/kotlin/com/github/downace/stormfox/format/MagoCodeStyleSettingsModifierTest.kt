@@ -14,7 +14,7 @@ class MagoCodeStyleSettingsModifierTest {
 
     abstract class Fixture : BasePlatformTestCase() {
         fun testContract() {
-            val state = MagoSettings.getInstance().state
+            val state = MagoSettings.getInstance(project).state
             val enabled = state.enabled
             val twigEnabled = state.twigEnabled
             try {

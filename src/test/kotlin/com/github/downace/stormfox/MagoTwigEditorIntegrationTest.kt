@@ -25,7 +25,7 @@ class MagoTwigEditorIntegrationTest {
 
     abstract class Fixture(private val binary: String) : BasePlatformTestCase() {
         fun testEditor() {
-            val settings = MagoSettings.getInstance().state
+            val settings = MagoSettings.getInstance(project).state
             val previousPath = settings.magoPath
             val previousConfig = settings.configPath
             val previousRoot = settings.executionRoot
@@ -44,7 +44,7 @@ class MagoTwigEditorIntegrationTest {
                 settings.executionRoot = ""
                 settings.enabled = true
                 settings.twigEnabled = true
-                val versions = MagoVersionService.getInstance()
+                val versions = MagoVersionService.getInstance(project)
                 val directory = project.basePath?.let(::File) ?: workspace
                 val token = versions.beginValidation(binary, directory)!!
                 versions.finish(token, binary, MagoValidation.Result.Success("mago 1.60.0"), directory)

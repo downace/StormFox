@@ -39,7 +39,7 @@ internal class MagoConfigNavigationService(
 ) {
     fun open(tool: String, code: String?) {
         val root = project.basePath?.let(::File) ?: return
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val configPath = settings.configPath
         val includeGlobal = settings.executionRoot.isBlank()
         scope.launch(Dispatchers.IO) {

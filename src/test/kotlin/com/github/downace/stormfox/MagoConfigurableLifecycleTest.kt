@@ -82,7 +82,7 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
 
     fun testExecutionRootParticipatesInResetApplyAndModifiedState() {
         val configurable = MagoConfigurable(project)
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val originalRoot = state.executionRoot
         try {
             state.executionRoot = "/stored"
@@ -111,7 +111,7 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
 
     fun testStatusWidgetPreferenceParticipatesInResetApplyAndModifiedState() {
         val configurable = MagoConfigurable(project)
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val original = state.showStatusWidget
         try {
             state.showStatusWidget = true
@@ -141,7 +141,7 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
 
     fun testFormatterCheckboxesAreIndependentAndMigrateLegacyValue() {
         val configurable = MagoConfigurable(project)
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val originalPhp = state.enabled
         val originalTwig = state.twigEnabled
         try {

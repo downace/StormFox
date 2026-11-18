@@ -19,12 +19,12 @@ class MagoCodeStyleSettingsModifier : CodeStyleSettingsModifier {
     ): CodeStyleStatusBarUIContributor? = null
 
     override fun mayOverrideSettingsOf(project: Project): Boolean {
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         return state.enabled || (state.twigEnabled ?: state.enabled)
     }
 
     override fun getDisablingFunction(project: Project): Consumer<CodeStyleSettings> = Consumer {
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         state.enabled = false
         state.twigEnabled = false
     }

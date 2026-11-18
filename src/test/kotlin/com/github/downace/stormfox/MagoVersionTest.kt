@@ -14,10 +14,10 @@ import java.util.concurrent.TimeUnit
 
 class MagoVersionTest : BasePlatformTestCase() {
     fun testBlankDiagnosticCommandSharesDefaultMagoVersionContext() {
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val previous = settings.magoPath
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
         try {
             settings.magoPath = ""
             val token = service.beginValidation("mago")
@@ -41,8 +41,8 @@ class MagoVersionTest : BasePlatformTestCase() {
 
     fun testCacheNeverLooksUpSettingsWhileHoldingCacheMonitor() {
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
-        val state = MagoSettings.getInstance().state
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
+        val state = MagoSettings.getInstance(project).state
         val command = state.magoPath
         val root = state.executionRoot
         val thread = Thread.currentThread()
@@ -128,12 +128,12 @@ class MagoVersionTest : BasePlatformTestCase() {
     }
 
     fun testRefreshOnlyProbesOpenDirectoriesAndCoalescesSettings() {
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val oldPath = state.magoPath
         val oldRoot = state.executionRoot
         val callback = state.onPathChanged
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
         val open = Files.createTempDirectory("mago-open").toFile()
         val closed = Files.createTempDirectory("mago-closed").toFile()
         val deleted = Files.createTempDirectory("mago-deleted").toFile()
@@ -173,11 +173,11 @@ class MagoVersionTest : BasePlatformTestCase() {
     }
 
     fun testProjectContextsAndStaleRootValidation() {
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val originalPath = state.magoPath
         val originalRoot = state.executionRoot
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
         val first = java.io.File("project-one").absoluteFile
         val second = java.io.File("project-two").absoluteFile
         try {
@@ -222,11 +222,11 @@ class MagoVersionTest : BasePlatformTestCase() {
     }
 
     fun testStaleValidationCannotReplaceNewResultAndFailureClearsCache() {
-        val settings = MagoSettings.getInstance()
+        val settings = MagoSettings.getInstance(project)
         val original = settings.state.magoPath
         val job = SupervisorJob()
-        val service = MagoVersionService(CoroutineScope(Dispatchers.Default + job))
-        val connection = ApplicationManager.getApplication().messageBus.connect(testRootDisposable)
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
+        val connection = project.messageBus.connect(testRootDisposable)
         var notifications = 0
         connection.subscribe(MagoVersionListener.TOPIC, object : MagoVersionListener {
             override fun versionChanged() { notifications++ }
@@ -263,15 +263,15 @@ class MagoVersionTest : BasePlatformTestCase() {
         }
     }
 
-    fun testInspectionDescriptionUsesCachedVersionAndFallback() {
-        val settings = MagoSettings.getInstance()
+    fun testInspectionDescriptionUsesProjectIndependentFallback() {
+        val settings = MagoSettings.getInstance(project)
         val original = settings.state.magoPath
-        val service = MagoVersionService.getInstance()
+        val service = MagoVersionService.getInstance(project)
         try {
             settings.state.magoPath = ""
             val token = service.beginValidation("")
             service.finish(token, "", MagoValidation.Result.Success("mago 1.60.1"))
-            assertTrue(MagoLintInspection().loadDescription()!!.contains("/1.60.1/en/tools/linter/"))
+            assertTrue(MagoLintInspection().loadDescription()!!.contains("/latest/en/tools/linter/"))
             val failure = service.beginValidation("")
             service.finish(failure, "", MagoValidation.Result.Failure("failed"))
             assertTrue(MagoLintInspection().loadDescription()!!.contains("/latest/en/tools/linter/"))

@@ -14,7 +14,7 @@ class MagoDockerIntegrationTest : BasePlatformTestCase() {
         val root = Files.createTempDirectory("stormfox docker ").toFile()
         val source = root.resolve("src/Test.php").apply { parentFile.mkdirs(); writeText("<?php echo 'disk';\n") }
         val prefix = "docker run --rm -i -v .:/app -w /app ghcr.io/carthage-software/mago:1.60.1"
-        val state = MagoSettings.getInstance().state
+        val state = MagoSettings.getInstance(project).state
         val oldCommand = state.magoPath
         val oldRoot = state.executionRoot
         val callback = state.onPathChanged
@@ -23,9 +23,9 @@ class MagoDockerIntegrationTest : BasePlatformTestCase() {
             state.onPathChanged = null
             state.magoPath = prefix
             state.executionRoot = "/app"
-            val validation = MagoValidation.checkBinary(prefix, root, "/app")
+            val validation = MagoValidation.checkBinary(prefix, root, "/app", project)
             assertTrue(validation.toString(), validation is MagoValidation.Result.Success)
-            assertEquals(MagoVersion(1, 60, 1), MagoVersionService.getInstance().cachedVersion(root))
+            assertEquals(MagoVersion(1, 60, 1), MagoVersionService.getInstance(project).cachedVersion(root))
             val config = root.resolve("mago.toml").apply { writeText("") }
             val configValidation = MagoValidation.checkConfig(prefix, config.path, root, "/app")
             assertTrue(configValidation.toString(), configValidation is MagoValidation.Result.Success)

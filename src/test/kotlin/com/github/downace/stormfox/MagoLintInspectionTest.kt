@@ -92,7 +92,7 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
 
     fun testCollectRequiresInspectionButNotFormatter() {
         val path = Files.createTempFile("stormfox-lint-", ".phtml")
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val enabled = settings.enabled
         try {
             Files.writeString(path, "<?php echo 1;")

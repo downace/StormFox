@@ -141,7 +141,7 @@ class MagoGuardInspectionTest : BasePlatformTestCase() {
 
     fun testBatchRunsToCompletionWithoutAnEditorCacheEntry() {
         val path = Files.createTempFile("stormfox-guard-", ".php")
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val previous = settings.magoPath
         try {
             Files.writeString(path, "<?php echo 1;")

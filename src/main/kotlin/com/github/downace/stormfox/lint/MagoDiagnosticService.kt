@@ -130,7 +130,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
             val revision = document.modificationStamp
             synchronized(this) {
                 if (disposed || project.isDisposed || !file.isValid) return@synchronized drop("disposed-or-invalid-file")
-                val settings = MagoSettings.getInstance().state
+                val settings = MagoSettings.getInstance(project).state
                 val path = file.path
                 val directory = project.basePath?.let(::File) ?: File(path).parentFile
                     ?: return@synchronized drop("no-working-directory")
@@ -148,7 +148,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
         })
 
     init {
-        ApplicationManager.getApplication().messageBus.connect(this).subscribe(MagoVersionListener.TOPIC, object : MagoVersionListener {
+        project.messageBus.connect(this).subscribe(MagoVersionListener.TOPIC, object : MagoVersionListener {
             override fun versionChanged() {
                 invalidateDependencies(reason = "version")
                 ApplicationManager.getApplication().invokeLater {
@@ -192,7 +192,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
             }
         })
         scope.launch {
-            fun settingsKey() = MagoSettings.getInstance().state.let { Triple(it.magoPath, it.configPath, it.executionRoot) }
+            fun settingsKey() = MagoSettings.getInstance(project).state.let { Triple(it.magoPath, it.configPath, it.executionRoot) }
             var previous = settingsKey()
             while (isActive) {
                 delay(1000)
@@ -203,7 +203,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
     }
 
     private fun dependencyPaths(): MagoDependencyPaths {
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val workingDirectory = File(project.basePath ?: state.keys().firstOrNull()?.parent?.path ?: ".")
         return MagoDependencyPaths(workingDirectory, settings.configPath, settings.magoPath)
     }
@@ -216,7 +216,7 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
         trace("dependency-invalidate reason=$reason file=${savedFile?.path ?: "-"} revision=$revision generation=$oldGeneration nextGeneration=${oldGeneration + 1} files=${files.size}")
         if (savedFile == null) state.invalidateAll()
         else {
-            val settings = MagoSettings.getInstance().state
+            val settings = MagoSettings.getInstance(project).state
             state.invalidateForSave(savedFile, text, revision, oldGeneration, oldGeneration + 1,
                 settings.magoPath.ifBlank { "mago" }, settings.configPath, System.getenv())
         }

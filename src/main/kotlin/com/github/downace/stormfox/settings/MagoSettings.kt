@@ -6,15 +6,27 @@ import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
+import com.intellij.openapi.components.StoragePathMacros
+import com.intellij.openapi.project.Project
 import com.github.downace.stormfox.MagoVersionService
 
 internal data class MagoSettingsSnapshot(val command: String, val executionRoot: String)
 
 @Service(Service.Level.APP)
 @State(name = "MagoSettings", storages = [Storage("mago.xml", roamingType = RoamingType.DISABLED)])
-class MagoSettings : PersistentStateComponent<MagoSettings.State> {
+internal class LegacyMagoSettings : PersistentStateComponent<MagoSettings.State> {
+    private var state = MagoSettings.State()
+    override fun getState() = state
+    override fun loadState(state: MagoSettings.State) { this.state = state }
+}
+
+@Service(Service.Level.PROJECT)
+@State(name = "MagoProjectSettings", storages = [Storage(StoragePathMacros.WORKSPACE_FILE)])
+class MagoSettings(private val project: Project) : PersistentStateComponent<MagoSettings.State> {
 
     class State {
+        @JvmField
+        var migrationCompleted: Boolean = false
         var magoPath: String = ""
             set(value) {
                 if (field == value) return
@@ -51,7 +63,7 @@ class MagoSettings : PersistentStateComponent<MagoSettings.State> {
     private var state = attach(State())
 
     private fun attach(value: State): State {
-        value.onPathChanged = { snapshot -> MagoVersionService.getInstance().refresh(snapshot) }
+        value.onPathChanged = { snapshot -> MagoVersionService.getInstance(project).refresh(snapshot) }
         return value
     }
 
@@ -60,8 +72,21 @@ class MagoSettings : PersistentStateComponent<MagoSettings.State> {
     override fun loadState(state: State) {
         this.state.onPathChanged = null
         this.state = attach(state)
-        ApplicationManager.getApplication().getServiceIfCreated(MagoVersionService::class.java)
+        project.getServiceIfCreated(MagoVersionService::class.java)
             ?.refresh(state.snapshot())
+    }
+
+    override fun noStateLoaded() {
+        val legacy = ApplicationManager.getApplication().getService(LegacyMagoSettings::class.java).state
+        loadState(State().also {
+            it.magoPath = legacy.magoPath
+            it.configPath = legacy.configPath
+            it.executionRoot = legacy.executionRoot
+            it.enabled = legacy.enabled
+            it.twigEnabled = legacy.twigEnabled
+            it.showStatusWidget = legacy.showStatusWidget
+            it.migrationCompleted = true
+        })
     }
 
     companion object {
@@ -69,9 +94,9 @@ class MagoSettings : PersistentStateComponent<MagoSettings.State> {
         @org.jetbrains.annotations.TestOnly
         internal var lookupGuard: (() -> Unit)? = null
 
-        fun getInstance(): MagoSettings {
+        fun getInstance(project: Project): MagoSettings {
             lookupGuard?.invoke()
-            return ApplicationManager.getApplication().getService(MagoSettings::class.java)
+            return project.getService(MagoSettings::class.java)
         }
     }
 }

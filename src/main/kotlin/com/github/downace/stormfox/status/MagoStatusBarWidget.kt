@@ -102,7 +102,7 @@ class MagoStatusBarWidget(private val project: Project) :
         refreshComponent()
     }
     override fun getSelectedValue(): String? =
-        statusPresentationText(MagoSettings.getInstance().state.showStatusWidget, enabledToolsCache.isNotEmpty())
+        statusPresentationText(MagoSettings.getInstance(project).state.showStatusWidget, enabledToolsCache.isNotEmpty())
     override fun getTooltipText(): String = stateTooltip(statusState(filteredSnapshot(snapshot, enabledToolsCache)))
     override fun getIcon(): Icon = DotIcon(stateColor(statusState(filteredSnapshot(snapshot, enabledToolsCache))))
     override fun getPopup(): JBPopup? = createDetailsPopup()
@@ -144,7 +144,7 @@ class MagoStatusBarWidget(private val project: Project) :
             profileLoaded = true
         }
         statusBar?.updateWidget(ID)
-        val visible = MagoSettings.getInstance().state.showStatusWidget && enabledToolsCache.isNotEmpty()
+        val visible = MagoSettings.getInstance(project).state.showStatusWidget && enabledToolsCache.isNotEmpty()
         if (!visible) {
             activePopup?.cancel()
             activePopup = null
@@ -154,7 +154,7 @@ class MagoStatusBarWidget(private val project: Project) :
     }
 
     private fun createDetailsPopup(): JBPopup? {
-        if (disposed || project.isDisposed || enabledToolsCache.isEmpty() || !MagoSettings.getInstance().state.showStatusWidget) return null
+        if (disposed || project.isDisposed || enabledToolsCache.isEmpty() || !MagoSettings.getInstance(project).state.showStatusWidget) return null
         activePopup?.cancel()
         val initial = filteredSnapshot(activity.snapshot(), enabledToolsCache)
         val view = detailsPanel(enabledToolsCache, initial)

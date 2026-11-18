@@ -1,6 +1,5 @@
 package com.github.downace.stormfox.lint
 
-import com.github.downace.stormfox.MagoVersionService
 import com.github.downace.stormfox.versionedMagoDocumentation
 import com.intellij.codeInspection.LocalInspectionTool
 import com.intellij.codeInspection.ExternalAnnotatorInspectionVisitor
@@ -48,7 +47,7 @@ abstract class MagoDiagnosticInspection(private val source: MagoTool) : LocalIns
     override fun loadDescription(): String? =
         javaClass.classLoader.getResourceAsStream("inspectionDescriptions/${source.shortName}.html")
             ?.bufferedReader(Charsets.UTF_8)?.use { reader ->
-                versionedMagoDocumentation(reader.readText(), MagoVersionService.getInstance().cachedVersion())
+                versionedMagoDocumentation(reader.readText(), null)
             }
 
     /** No-editor collection also serves highlighting passes, so only this explicit entrypoint may wait for batch results. */

@@ -164,7 +164,7 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
         Thread.sleep(1100)
         val service = project.getService(MagoDiagnosticService::class.java)
         val pending = LinkedBlockingQueue<Worker>()
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val oldBinary = settings.magoPath
         val oldConfig = settings.configPath
         service.state.invalidateAll()
@@ -313,8 +313,8 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
             assertNotNull("Edited document did not start background recomputation", rerun)
             assertFalse(rerun!!.isCompleted)
             val dependentSnapshot = MagoSnapshot(1, "<?php", dependent.path, File(project.basePath!!),
-                MagoSettings.getInstance().state.magoPath.ifBlank { "mago" },
-                MagoSettings.getInstance().state.configPath, System.getenv(), service.epoch)
+                MagoSettings.getInstance(project).state.magoPath.ifBlank { "mago" },
+                MagoSettings.getInstance(project).state.configPath, System.getenv(), service.epoch)
             service.state.request(dependent, MagoTool.GUARD, dependentSnapshot)
             var sawSave = false
             project.messageBus.connect(testRootDisposable).subscribe(VirtualFileManager.VFS_CHANGES, object : BulkFileListener {
@@ -407,7 +407,7 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
         val directory = Files.createTempDirectory("stormfox-dependency-config-")
         val targetPath = directory.resolve("Target.php")
         val dependencyPath = directory.resolve(name)
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val oldConfig = settings.configPath
         val oldBinary = settings.magoPath
         // This fixture tests VFS invalidation, not executable validation; its binary is plain text.

@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit
 
 class MagoRuleMetadataServiceTest : BasePlatformTestCase() {
     fun testSingleFlightNegativeCacheAndVersionRecovery() {
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val oldCommand = settings.magoPath
         val oldRoot = settings.executionRoot
         val service = project.getService(MagoRuleMetadataService::class.java)
@@ -41,7 +41,7 @@ class MagoRuleMetadataServiceTest : BasePlatformTestCase() {
                 started.add(++count)
                 mapOf("x" to MagoRuleMetadata("x", name = "Recovered"))
             }
-            ApplicationManager.getApplication().messageBus.syncPublisher(MagoVersionListener.TOPIC).versionChanged()
+            project.messageBus.syncPublisher(MagoVersionListener.TOPIC).versionChanged()
             refreshed.poll(5, TimeUnit.SECONDS)
             service.request("metadata-test", directory, "")
             assertEquals(2, started.poll(5, TimeUnit.SECONDS))
@@ -56,7 +56,7 @@ class MagoRuleMetadataServiceTest : BasePlatformTestCase() {
     }
 
     fun testOldAResultCannotReplaceNewAAfterB() {
-        val settings = MagoSettings.getInstance().state
+        val settings = MagoSettings.getInstance(project).state
         val oldCommand = settings.magoPath
         val oldRoot = settings.executionRoot
         val service = project.getService(MagoRuleMetadataService::class.java)
