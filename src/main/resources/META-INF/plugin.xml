@@ -36,10 +36,9 @@
 
     <change-notes><![CDATA[
     <ul>
-        <li><b>Suppress inspections with <code>@mago-expect</code> or <code>@mago-ignore</code> quick fixes.</b></li>
-        <li>Support older Mago versions (down to 1.18.0), albeit with some limitations.</li>
-        <li>Track background Mago inspections with a status bar widget.</li>
-        <li>Improve failure diagnostics and reduce repeated log messages.</li>
+        <li><b><a href="https://mago.carthage.software/1.60.0/en/tools/formatter/twig/">Format</a> and <a href="https://mago.carthage.software/1.60.0/en/tools/twig-linter/">Lint</a> Twig files with Mago.</b></li>
+        <li>Keep Mago settings separate for each project.</li>
+        <li>See rule descriptions, categories, and default severity levels in lint tooltips.</li>
     </ul>
     ]]></change-notes>
 
