@@ -7,7 +7,7 @@
 
 ![PHP Mago inspections and Quick Fixes](docs/marketplace/screenshots/ide-3.gif)
 
-Works with PhpStorm 2024.3+ and IntelliJ IDEA 2024.3+.
+Supports PhpStorm 2024.3 and newer. It may also work in IntelliJ IDEA with the PHP plugin installed.
 
 Feel free to [report issues](https://github.com/downace/StormFox/issues) if you encounter errors or need more features.
 See [Troubleshooting](#troubleshooting) for collecting logs to include in a bug report.
@@ -34,7 +34,7 @@ Set **Execution project root** to `/app`, the directory corresponding to the loc
 
 ### Formatter
 
-> Twig formatting require Mago 1.60 or newer.
+> Twig formatting requires Mago 1.60 or newer.
 
 In **Settings | PHP | Quality Tools | Mago**, select **PHP**, **Twig**, or both under
 **Use Mago formatter for**. The **Reformat code** action uses Mago for the selected file types.
@@ -45,7 +45,7 @@ file types with Mago on save.
 
 ### Linter, Analyzer and Guard
 
-> Twig linting require Mago 1.60 or newer.
+> Twig linting requires Mago 1.60 or newer.
 
 Enable corresponding inspection in **Settings | Editor | Inspections | PHP | Quality tools**
 and **Settings | Editor | Inspections | Twig | Quality tools**

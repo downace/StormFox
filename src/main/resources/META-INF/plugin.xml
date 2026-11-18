@@ -4,18 +4,20 @@
     <vendor>Sergey Malchits</vendor>
 
     <description><![CDATA[
-    <p><a href="https://mago.carthage.software/">Mago</a> integration for PHP: format code, lint style and code quality, and analyze PHP types and logic using your project's Mago configuration.</p>
+    <p><a href="https://mago.carthage.software/">Mago</a> integration for PHP and Twig: format and lint code, and analyze PHP types and logic using your project's Mago configuration.</p>
     <p>
         Feel free to <a href="https://github.com/downace/StormFox/issues">report issues</a> if you encounter errors or need more features.
     </p>
     <h3>Features</h3>
     <ul>
-        <li><b><a href="https://mago.carthage.software/latest/en/tools/formatter/overview/">Formatter</a>:</b> format PHP and Twig files with Reformat code or automatically on save.</li>
-        <li><b><a href="https://mago.carthage.software/latest/en/tools/linter/overview/">Linter</a>:</b> see Mago Lint findings directly in the editor and the Problems window.</li>
+        <li><b><a href="https://mago.carthage.software/latest/en/tools/formatter/overview/">Formatter</a>:</b> format PHP and Twig files with Reformat code or automatically on save. </li>
+        <li><b><a href="https://mago.carthage.software/latest/en/tools/linter/overview/">Linter</a>:</b> see PHP and Twig lint findings directly in the editor and the Problems window.</li>
         <li><b><a href="https://mago.carthage.software/latest/en/tools/analyzer/overview/">Analyzer</a>:</b> inspect type errors and logical issues independently of the linter.</li>
         <li><b><a href="https://mago.carthage.software/latest/en/tools/guard/overview/">Guard</a>:</b> check architectural boundaries and structural conventions.</li>
-        <li><b><a href="https://mago.carthage.software/1.60.2/en/guide/installation/#docker">Run Mago in Docker</a>:</b> specify Docker command instead of local path, e.g. <code>docker run --rm -i -v .:/app -w /app ghcr.io/carthage-software/mago:1.60.1</code></li>
+        <li><b><a href="https://mago.carthage.software/latest/en/guide/installation/#docker">Run Mago in Docker</a>:</b> specify Docker command instead of local path, e.g. <code>docker run --rm -i -v .:/app -w /app ghcr.io/carthage-software/mago:1.60.1</code></li>
     </ul>
+    <br>
+    <blockquote>Twig formatting and linting requires Mago 1.60.0 or newer.</blockquote>
     <h3>Getting started</h3>
     <ol>
         <li><a href="https://mago.carthage.software/latest/en/guide/installation/">Install Mago</a> and make sure it runs on your machine.</li>
