@@ -1,0 +1,32 @@
+[
+  {
+    "name": "Literal Named Argument",
+    "code": "literal-named-argument",
+    "description": "Enforces that literal values used as arguments in function or method calls\nare passed as **named arguments**.\n\nThis improves readability by clarifying the purpose of the literal value at the call site.\nIt is particularly helpful for boolean flags, numeric constants, and `null` values\nwhere the intent is often ambiguous without the parameter name.\n",
+    "good_example": "<?php\n\nfunction set_option(string $key, bool $enable_feature) {}\n\nset_option(key: 'feature_x', enable_feature: true); // ✅ clear intent\n",
+    "bad_example": "<?php\n\nfunction set_option(string $key, bool $enable_feature) {}\n\nset_option('feature_x', true); // ❌ intent unclear\n",
+    "category": "Clarity",
+    "requirements": {"php-versions":[{"min":"8.0.0","max":null}],"integrations":[]},
+    "level": "Warning"
+  },
+  {
+    "name": "Prefer First Class Callable",
+    "code": "prefer-first-class-callable",
+    "description": "Promotes the use of first-class callable syntax (`...`) for creating closures.\n\nThis rule identifies closures and arrow functions that do nothing but forward their arguments to another function or method.\nIn such cases, the more concise and modern first-class callable syntax, introduced in PHP 8.1, can be used instead.\nThis improves readability by reducing boilerplate code.\n\nBy default, this rule only checks method and static method calls. Optionally, function calls can also\nbe checked by enabling `check-functions`, but this may produce false positives with internal PHP\nfunctions that enforce strict argument counts.\n",
+    "good_example": "<?php\n\n$names = ['Alice', 'Bob', 'Charlie'];\n$uppercased_names = array_map($formatter->format(...), $names);\n",
+    "bad_example": "<?php\n\n$names = ['Alice', 'Bob', 'Charlie'];\n$uppercased_names = array_map(fn($name) => $formatter->format($name), $names);\n",
+    "category": "BestPractices",
+    "requirements": {"php-versions":[{"min":"8.1.0","max":null}],"integrations":[]},
+    "level": "Warning"
+  },
+  {
+    "name": "Sensitive Parameter",
+    "code": "sensitive-parameter",
+    "description": "Requires that parameters that are likely to contain sensitive information (e.g., passwords)\nare marked with the `#[SensitiveParameter]` attribute to prevent accidental logging or exposure.\n\nThis rule only applies to PHP 8.2 and later, as the `SensitiveParameter` attribute was introduced in PHP 8.2.\n",
+    "good_example": "<?php\n\nfunction login(string $username, #[SensitiveParameter] string $password): void {\n   // ...\n}\n",
+    "bad_example": "<?php\n\nfunction login(string $username, string $password): void {\n   // ...\n}\n",
+    "category": "Security",
+    "requirements": {"php-versions":[{"min":"8.2.0","max":null}],"integrations":[]},
+    "level": "Error"
+  }
+]
