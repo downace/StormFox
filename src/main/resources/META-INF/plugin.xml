@@ -80,6 +80,7 @@
         <formattingService
                 id="MagoFormattingService"
                 implementation="com.github.downace.stormfox.format.MagoFormattingService"/>
+        <codeStyleSettingsModifier implementation="com.github.downace.stormfox.format.MagoCodeStyleSettingsModifier"/>
 
         <notificationGroup id="Mago" displayType="BALLOON"/>
     </extensions>
