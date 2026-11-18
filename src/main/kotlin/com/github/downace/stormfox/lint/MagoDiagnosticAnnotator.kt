@@ -124,7 +124,11 @@ open class MagoDiagnosticAnnotator(
         }
         fun annotation(message: String, level: HighlightSeverity = severity) = holder.newAnnotation(level, "Mago: $message")
         when (val result = annotationResult.result) {
-            is MagoDiagnosticRunner.Result.Failure -> annotation(result.message).fileLevel().create()
+            is MagoDiagnosticRunner.Result.Failure -> {
+                // Editor failures are surfaced by MagoDiagnosticEditorNotificationProvider.
+                // Keep the file-level diagnostic for batch inspection results.
+                if (batch) annotation(result.message).fileLevel().create()
+            }
             is MagoDiagnosticRunner.Result.Success -> {
                 result.warnings.takeIf { it.isNotEmpty() }?.let { warnings ->
                     val message = warnings.joinToString(" ")

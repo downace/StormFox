@@ -70,6 +70,7 @@
                          groupPath="Twig" groupName="Quality tools" enabledByDefault="false" level="WARNING"
                          implementationClass="com.github.downace.stormfox.lint.MagoTwigLintInspection"/>
         <externalAnnotator language="" implementationClass="com.github.downace.stormfox.lint.MagoTwigLintAnnotator"/>
+        <editorNotificationProvider implementation="com.github.downace.stormfox.lint.MagoDiagnosticEditorNotificationProvider"/>
         <fileIconProvider implementation="com.github.downace.stormfox.config.MagoConfigIconProvider"/>
         <projectConfigurable
                 parentId="settings.php.quality.tools"

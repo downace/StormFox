@@ -161,8 +161,7 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
         assertEmpty(calls)
         val failure = MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago"))
         MagoLintAnnotator().apply(myFixture.file, failure, holder)
-        assertTrue(calls.contains("newAnnotation" to listOf(HighlightSeverity.ERROR, "Mago: Cannot start Mago")))
-        assertTrue(calls.any { it.first == "fileLevel" })
+        assertFalse(calls.any { it.first == "newAnnotation" || it.first == "fileLevel" })
     }
 
     fun testArgumentsUseGlobalConfigAndWorkspaceRelativePath() {
@@ -215,8 +214,15 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
             MagoLintAnnotator().apply(myFixture.file,
                 MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago")), target)
         }
-        assertEquals(HighlightSeverity.ERROR, failureHolder.single().severity)
-        assertTrue(failureHolder.single().isFileLevelAnnotation)
+        assertTrue(failureHolder.isEmpty())
+        val batchFailureHolder = AnnotationHolderImpl(AnnotationSession(myFixture.file), true)
+        batchFailureHolder.runAnnotatorWithContext(myFixture.file) { _, target ->
+            MagoDiagnosticAnnotator(com.github.downace.stormfox.lint.MagoTool.LINT, true).apply(myFixture.file,
+                MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Failure("Cannot start Mago")), target)
+        }
+        batchFailureHolder.assertAllAnnotationsCreated()
+        assertEquals(HighlightSeverity.ERROR, batchFailureHolder.single().severity)
+        assertTrue(batchFailureHolder.single().isFileLevelAnnotation)
         val custom = HighlightSeverity("StormFox runtime severity", 250)
         val registrar = com.intellij.codeInsight.daemon.impl.SeverityRegistrar.getSeverityRegistrar(project)
         registrar.registerSeverity(com.intellij.codeInsight.daemon.impl.SeverityRegistrar.SeverityBasedTextAttributes(
