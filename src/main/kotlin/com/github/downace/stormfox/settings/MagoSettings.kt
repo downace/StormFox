@@ -9,8 +9,17 @@ import com.intellij.openapi.components.Storage
 import com.intellij.openapi.components.StoragePathMacros
 import com.intellij.openapi.project.Project
 import com.github.downace.stormfox.MagoVersionService
+import com.intellij.util.messages.Topic
 
-internal data class MagoSettingsSnapshot(val command: String, val executionRoot: String)
+internal data class MagoSettingsSnapshot(val command: String, val executionRoot: String, val configPath: String = "")
+
+internal fun interface MagoSettingsListener {
+    fun settingsChanged(snapshot: MagoSettingsSnapshot)
+
+    companion object {
+        val TOPIC = Topic.create("Mago settings changed", MagoSettingsListener::class.java)
+    }
+}
 
 @Service(Service.Level.APP)
 @State(name = "MagoSettings", storages = [Storage("mago.xml", roamingType = RoamingType.DISABLED)])
@@ -38,8 +47,12 @@ class MagoSettings(private val project: Project) : PersistentStateComponent<Mago
         @get:com.intellij.util.xmlb.annotations.Transient
         internal var onPathChanged: ((MagoSettingsSnapshot) -> Unit)? = null
 
-        @JvmField
         var configPath: String = ""
+            set(value) {
+                if (field == value) return
+                field = value
+                onPathChanged?.invoke(snapshot())
+            }
 
         var executionRoot: String = ""
             set(value) {
@@ -48,7 +61,7 @@ class MagoSettings(private val project: Project) : PersistentStateComponent<Mago
                 onPathChanged?.invoke(snapshot())
             }
 
-        internal fun snapshot() = MagoSettingsSnapshot(magoPath, executionRoot)
+        internal fun snapshot() = MagoSettingsSnapshot(magoPath, executionRoot, configPath)
 
         @JvmField
         var enabled: Boolean = true
@@ -63,17 +76,26 @@ class MagoSettings(private val project: Project) : PersistentStateComponent<Mago
     private var state = attach(State())
 
     private fun attach(value: State): State {
-        value.onPathChanged = { snapshot -> MagoVersionService.getInstance(project).refresh(snapshot) }
+        var previous = value.snapshot()
+        value.onPathChanged = { snapshot ->
+            val versionChanged = previous.command != snapshot.command || previous.executionRoot != snapshot.executionRoot
+            previous = snapshot
+            project.messageBus.syncPublisher(MagoSettingsListener.TOPIC).settingsChanged(snapshot)
+            if (versionChanged) MagoVersionService.getInstance(project).refresh(snapshot)
+        }
         return value
     }
 
     override fun getState(): State = state
 
     override fun loadState(state: State) {
+        val previous = this.state.snapshot()
         this.state.onPathChanged = null
         this.state = attach(state)
+        val snapshot = state.snapshot()
+        if (snapshot != previous) project.messageBus.syncPublisher(MagoSettingsListener.TOPIC).settingsChanged(snapshot)
         project.getServiceIfCreated(MagoVersionService::class.java)
-            ?.refresh(state.snapshot())
+            ?.refresh(snapshot)
     }
 
     override fun noStateLoaded() {

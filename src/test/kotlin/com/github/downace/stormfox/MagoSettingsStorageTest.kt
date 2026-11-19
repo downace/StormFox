@@ -2,6 +2,9 @@ package com.github.downace.stormfox
 
 import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.settings.LegacyMagoSettings
+import com.github.downace.stormfox.settings.MagoSettingsListener
+import com.github.downace.stormfox.settings.MagoSettingsSnapshot
+import com.github.downace.stormfox.lint.MagoDiagnosticService
 import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.StoragePathMacros
@@ -132,6 +135,33 @@ class MagoSettingsProjectLifecycleTest : BasePlatformTestCase() {
 }
 
 class MagoSettingsSerializationTest : BasePlatformTestCase() {
+    fun testSettingsEventsTrackChangesAndDetachReplacedState() {
+        val component = MagoSettings(project)
+        val events = mutableListOf<MagoSettingsSnapshot>()
+        project.messageBus.connect(testRootDisposable).subscribe(MagoSettingsListener.TOPIC,
+            MagoSettingsListener { events.add(it) })
+        val old = component.state
+        old.configPath = "custom"
+        old.magoPath = "test-mago"
+        old.executionRoot = "/app"
+        assertEquals(listOf(
+            MagoSettingsSnapshot("", "", "custom"),
+            MagoSettingsSnapshot("test-mago", "", "custom"),
+            MagoSettingsSnapshot("test-mago", "/app", "custom"),
+        ), events)
+        old.configPath = "custom"
+        old.enabled = false
+        assertEquals(3, events.size)
+        val replacement = MagoSettings.State().also { it.configPath = "other" }
+        component.loadState(replacement)
+        assertEquals(MagoSettingsSnapshot("", "", "other"), events.last())
+        val count = events.size
+        old.configPath = "detached"
+        component.loadState(replacement)
+        assertEquals(count, events.size)
+        replacement.configPath = "new"
+        assertEquals(MagoSettingsSnapshot("", "", "new"), events.last())
+    }
     fun testProjectServicesAreIsolated() {
         val other = ProjectManager.getInstance().defaultProject
         val first = MagoSettings.getInstance(project)
@@ -140,9 +170,19 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
         assertNotSame(MagoVersionService.getInstance(project), MagoVersionService.getInstance(other))
         val originalFirst = first.state.magoPath
         val originalSecond = second.state.magoPath
+        val firstEvents = mutableListOf<MagoSettingsSnapshot>()
+        val secondEvents = mutableListOf<MagoSettingsSnapshot>()
+        project.messageBus.connect(testRootDisposable).subscribe(MagoSettingsListener.TOPIC,
+            MagoSettingsListener { firstEvents.add(it) })
+        other.messageBus.connect(testRootDisposable).subscribe(MagoSettingsListener.TOPIC,
+            MagoSettingsListener { secondEvents.add(it) })
         try {
             first.state.magoPath = "project-one"
+            assertEquals(listOf(first.state.snapshot()), firstEvents)
+            assertTrue(secondEvents.isEmpty())
             second.state.magoPath = "project-two"
+            assertEquals(1, firstEvents.size)
+            assertEquals(listOf(second.state.snapshot()), secondEvents)
             assertEquals("project-one", first.state.magoPath)
             assertEquals("project-two", second.state.magoPath)
         } finally {
@@ -196,6 +236,8 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
     fun testPersistedColdLoadDoesNotLookUpSettingsWhileLoading() {
         // Ensure loadState takes the branch used when the version service already exists.
         val service = MagoVersionService.getInstance(project)
+        val diagnostics = project.getService(MagoDiagnosticService::class.java)
+        val epoch = diagnostics.epoch
         val original = MagoSettings.getInstance(project).state.snapshot()
         val xml = JDOMUtil.load("""<State><option name="magoPath" value="mago" /><option name="executionRoot" value="/app" /></State>""")
         val loaded = XmlSerializer.deserialize(xml, MagoSettings.State::class.java)
@@ -208,6 +250,7 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
                 }
             }
             executor.submit { component.loadState(loaded) }.get(5, TimeUnit.SECONDS)
+            assertTrue(diagnostics.epoch > epoch)
             assertEquals("mago", component.state.magoPath)
             assertEquals("/app", component.state.executionRoot)
         } finally {

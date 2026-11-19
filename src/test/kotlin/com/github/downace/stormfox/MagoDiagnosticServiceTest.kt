@@ -25,6 +25,28 @@ import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 
 class MagoDiagnosticServiceTest : BasePlatformTestCase() {
+    fun testSettingsChangesImmediatelyInvalidateCachedSnapshots() {
+        val file = myFixture.configureByText("SettingsTarget.php", "<?php echo 1;").virtualFile
+        val service = project.getService(MagoDiagnosticService::class.java)
+        val settings = MagoSettings.getInstance(project).state
+        val original = settings.configPath
+        try {
+            val snapshot = MagoSnapshot(1, "<?php echo 1;", file.path, File(project.basePath!!),
+                settings.magoPath, settings.configPath, emptyMap(), service.epoch)
+            service.state.request(file, MagoTool.ANALYZE, snapshot)
+            assertTrue(service.state.isCurrent(file, MagoTool.ANALYZE, snapshot))
+            settings.configPath = original + ".changed"
+            assertTrue(service.epoch > snapshot.generation)
+            assertFalse(service.state.isCurrent(file, MagoTool.ANALYZE, snapshot))
+            val epoch = service.epoch
+            settings.configPath = settings.configPath
+            settings.showStatusWidget = !settings.showStatusWidget
+            assertEquals(epoch, service.epoch)
+            settings.showStatusWidget = !settings.showStatusWidget
+        } finally {
+            settings.configPath = original
+        }
+    }
     fun testGuardWarningsAnnotateEmptyPhpAndOfferAllActions() {
         myFixture.configureByText("Empty.php", "")
         myFixture.enableInspections(MagoLintInspection(), MagoAnalyzeInspection(), MagoGuardInspection())
@@ -120,7 +142,6 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
     }
 
     fun testApplyResolvesSaveAndFreshCompletionWithoutAnotherCollect() {
-        Thread.sleep(1100)
         val service = project.getService(MagoDiagnosticService::class.java)
         val pending = LinkedBlockingQueue<Worker>()
         service.state.invalidateAll()
@@ -190,13 +211,9 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
             val staleReport = annotator.doAnnotate(collected)!!
             assertTrue(staleReport.retained)
             val oldWorker = pending.poll(5, TimeUnit.SECONDS)!!
+            val beforeSettings = service.epoch
             settings.magoPath = "new-mago"
             settings.configPath = "new-config.toml"
-            val beforeSettings = service.epoch
-            repeat(75) {
-                if (service.epoch > beforeSettings) return@repeat
-                Thread.sleep(20)
-            }
             assertTrue(service.epoch > beforeSettings)
             val previousEpoch = service.epoch
             WriteAction.run<RuntimeException> { dependency.setBinaryContent("changed".toByteArray()) }

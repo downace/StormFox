@@ -23,10 +23,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.util.concurrent.atomic.AtomicLong
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.isActive
-import kotlinx.coroutines.launch
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.settings.MagoSettingsListener
 import com.github.downace.stormfox.MagoFailureLog
 import com.github.downace.stormfox.MagoFailureLogService
 import com.github.downace.stormfox.MagoVersionListener
@@ -191,15 +189,9 @@ class MagoDiagnosticService(private val project: Project, scope: CoroutineScope)
                 }
             }
         })
-        scope.launch {
-            fun settingsKey() = MagoSettings.getInstance(project).state.let { Triple(it.magoPath, it.configPath, it.executionRoot) }
-            var previous = settingsKey()
-            while (isActive) {
-                delay(1000)
-                val current = settingsKey()
-                if (current != previous) { previous = current; invalidateDependencies(reason = "settings") }
-            }
-        }
+        project.messageBus.connect(this).subscribe(MagoSettingsListener.TOPIC, MagoSettingsListener {
+            invalidateDependencies(reason = "settings")
+        })
     }
 
     private fun dependencyPaths(): MagoDependencyPaths {
