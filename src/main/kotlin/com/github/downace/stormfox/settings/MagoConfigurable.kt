@@ -15,7 +15,7 @@ import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.labels.LinkLabel
+import com.intellij.ui.components.ActionLink
 import com.intellij.util.ui.InlineIconButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
@@ -310,7 +310,7 @@ class MagoConfigurable @JvmOverloads constructor(
         }
 
         private fun JPanel.inspectionLink(label: String, inspectionTool: String) {
-            add(LinkLabel.create(label) {
+            add(ActionLink(label) {
                 val settings = settingsForComponent(this)
                 val inspections = settings?.find(ErrorsConfigurable::class.java)
                 if (inspections != null) {

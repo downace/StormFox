@@ -10,7 +10,6 @@ import com.intellij.openapi.application.EDT
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.editor.Editor
 import com.intellij.openapi.fileEditor.FileDocumentManager
-import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.OpenFileDescriptor
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -60,7 +59,7 @@ internal class MagoConfigNavigationService(
                 val document = FileDocumentManager.getInstance().getDocument(virtualFile) ?: return@withContext
                 val offset = MagoConfigNavigation.ruleOffset(document.text, virtualFile.name, tool, code)
                 if (offset == null) {
-                    project.getService(FileEditorManager::class.java).openFile(virtualFile, true)
+                    OpenFileDescriptor(project, virtualFile).navigate(true)
                 } else {
                     OpenFileDescriptor(project, virtualFile, offset).navigate(true)
                 }

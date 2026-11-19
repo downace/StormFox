@@ -10,7 +10,7 @@ import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.OSProcessHandler
-import com.intellij.execution.process.ProcessAdapter
+import com.intellij.execution.process.ProcessListener
 import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
@@ -156,7 +156,7 @@ internal object MagoRuleMetadataRunner {
             val stdout = StringBuilder()
             val stderr = StringBuilder()
             val exceeded = AtomicBoolean(false)
-            handler.addProcessListener(object : ProcessAdapter() {
+            handler.addProcessListener(object : ProcessListener {
                 override fun onTextAvailable(event: ProcessEvent, outputType: com.intellij.openapi.util.Key<*>) {
                     val target = when (outputType) {
                         ProcessOutputTypes.STDOUT -> stdout

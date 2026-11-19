@@ -10,7 +10,7 @@ import com.intellij.openapi.options.ex.ConfigurableExtensionPointUtil
 import com.intellij.openapi.options.ex.Settings
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurable
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurableProvider
-import com.intellij.ui.components.labels.LinkLabel
+import com.intellij.ui.components.ActionLink
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.jetbrains.concurrency.AsyncPromise
 import org.jetbrains.concurrency.Promise
@@ -24,7 +24,8 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         val configurable = extension.createConfigurable() as MagoConfigurable
         try {
             val component = configurable.createComponent()
-            val links = descendants(component).filterIsInstance<LinkLabel<*>>()
+            val links = descendants(component).filterIsInstance<ActionLink>()
+                .filter { it.text in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }
             assertEquals(listOf("Linter", "Analyzer", "Guard", "Twig Linter"), links.map { it.text }.toList())
             assertEquals(
                 1,
@@ -95,9 +96,12 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         val configurable = MagoConfigurable(project) { settings }
         try {
             val component = configurable.createComponent()
-            val links = descendants(component).filterIsInstance<LinkLabel<*>>().toList()
+            val links = descendants(component).filterIsInstance<ActionLink>()
+                .filter { it.text in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }
+                .toList()
             assertSame(inspections, settings.find(ErrorsConfigurable::class.java))
             val expected = listOf("MagoLint", "MagoAnalyze", "MagoGuard", "MagoTwigLint")
+            assertEquals(expected.size, links.size)
             links.forEachIndexed { index, link ->
                 selection = AsyncPromise()
                 link.doClick()
