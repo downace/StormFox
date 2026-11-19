@@ -17,6 +17,7 @@ internal object MagoStatusSettingsNavigation {
     }
 
     internal fun openPlugin(project: Project, showSettings: (Project, Class<out Configurable>) -> Unit) {
+        // The string overload selects a display name, not a configurable ID.
         showSettings(project, MagoConfigurable::class.java)
     }
 

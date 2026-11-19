@@ -77,6 +77,7 @@ internal class MagoRuleMetadataService(private val project: Project, private val
                 attempted = false
                 key = next
             }
+            // Cache failures too: annotator passes should not repeatedly spawn a failing process.
             if (attempted) return
             attempted = true
             val token = generation
@@ -94,6 +95,7 @@ internal class MagoRuleMetadataService(private val project: Project, private val
                     null
                 }
                 synchronized(this@MagoRuleMetadataService) {
+                    // The key can cycle back to the same value while an old load is still finishing.
                     if (token != generation || key != next || project.isDisposed) return@launch
                     catalogue = result
                     job = null
@@ -137,6 +139,8 @@ internal object MagoRuleMetadataRunner {
     private const val TIMEOUT_SECONDS = 20L
     private val log = Logger.getInstance(MagoRuleMetadataRunner::class.java)
 
+    // --list-rules lists enabled rules; --pedantic enables all rules, including those disabled
+    // by configuration or by default, so diagnostic tooltips can look up their metadata.
     internal fun arguments(key: MagoRuleMetadataKey): List<String> =
         MagoExecutionContext(key.command, File(key.directory), key.root).command() +
             listOf("lint", "--list-rules", "--json", "--pedantic")

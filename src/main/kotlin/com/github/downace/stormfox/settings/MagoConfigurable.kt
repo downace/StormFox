@@ -215,6 +215,7 @@ class MagoConfigurable @JvmOverloads constructor(
             val inspections = settings?.find(ErrorsConfigurable::class.java)
             if (inspections != null) {
                 settings.select(inspections).doWhenDone {
+                    // Selecting the Settings node does not guarantee its UI is initialized yet.
                     if (settings.getConfigurableWithInitializedUiComponent(INSPECTIONS_CONFIGURABLE_ID, true) != null) {
                         inspections.selectInspectionTool(inspectionTool)
                     }

@@ -289,6 +289,7 @@ class MagoStatusBarWidget(private val project: Project) :
             accessibleContext.accessibleName = "${tool.label} inspection settings"
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         }
+        // Reserve the widest status label so state changes do not shift the elapsed-time and settings columns.
         val statusWidth = reservedStatusLabelWidth(tool.label, statusText.getFontMetrics(statusText.font), JBUI.scale(2))
         statusText.preferredSize = Dimension(statusWidth, statusText.preferredSize.height)
         val status = panel {

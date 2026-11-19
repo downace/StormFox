@@ -67,6 +67,7 @@ class MagoSettings(private val project: Project) : PersistentStateComponent<Mago
         var enabled: Boolean = true
 
         @JvmField
+        // Null preserves the pre-Twig formatter choice for existing settings.
         var twigEnabled: Boolean? = null
 
         @JvmField

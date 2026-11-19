@@ -101,6 +101,8 @@ internal class MagoVersionService(private val project: Project, private val scop
     }
 
     private fun beginLocked(context: Key): Long {
+        // Keep the last known version while revalidating; the token prevents an older probe
+        // from overwriting the result of a newer validation for the same context.
         val previous = entries[context]?.version
         val token = ++generation
         entries[context] = Entry(token, previous)

@@ -28,6 +28,7 @@ internal class MagoSettingsValidationService(private val scope: CoroutineScope) 
                 val result = coroutineScope {
                     suspendCancellableCoroutine<T> { continuation ->
                         val indicator = EmptyProgressIndicator()
+                        // Process validation observes platform progress cancellation, not just coroutine cancellation.
                         continuation.invokeOnCancellation { indicator.cancel() }
                         launch(Dispatchers.IO) {
                             continuation.resumeWith(runCatching {

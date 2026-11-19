@@ -22,6 +22,8 @@ internal object MagoRunner {
 
     const val TIMEOUT_MS = 30_000
 
+    // Attachment and delivery share the cancellation lock: cancellation can race both process
+    // startup and completion, but a late process or result must not outlive it.
     internal class Cancellation {
         private var cancelled = false
         private var process: Process? = null
@@ -120,6 +122,7 @@ internal object MagoRunner {
         var writer: java.util.concurrent.Future<*>? = null
         return try {
             cancellation.attach(handler.process)
+            // Feed stdin concurrently with output collection so neither pipe can block the other.
             writer = AppExecutorUtil.getAppExecutorService().submit { writeStdin(handler, text) }
 
             val started = System.currentTimeMillis()

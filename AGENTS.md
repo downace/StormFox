@@ -22,6 +22,10 @@
   configurable in the current Settings window before selecting an inspection: completion of
   `Settings.select` alone does not guarantee that its UI exists. Outside Settings, use the native
   inspection-settings action; the `showSettingsDialog` selection callback can run too early.
+* **Settings loading must not re-enter service creation.** Pass a settings snapshot to consumers
+  from `loadState`; a synchronous lookup of the settings service, even through another service,
+  can deadlock initialization. Keep settings lookups outside locks needed by the loader. Test this
+  with persisted state and a previously created consumer, not only an XML roundtrip.
 * **The plugin never writes to a file.** Formatting and inspections read the editor buffer
   through stdin. Formatting returns the result to the document; inspections return diagnostics.
 * **Independent inspections, shared execution.** `MagoLint`, `MagoAnalyze` and `MagoGuard` keep separate
@@ -69,6 +73,12 @@
   as HTML, and the marketplace renders it too).
 
 ## Working on it
+
+When changing code, add or update comments where a non-obvious constraint, invariant, or decision
+would otherwise be lost. Explain the reason rather than restating the code.
+
+In documentation, write IDE settings paths with ` | ` separators. Keep low-level details of stdin
+and editor-buffer saving out of the README.
 
 Use JDK 25 through `JAVA_HOME`. The default compile SDK is PhpStorm 2026.3; an installed IDE can
 be selected with `"-Pplatform.localPath=/path/to/PhpStorm"`.

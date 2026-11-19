@@ -120,6 +120,7 @@ abstract class MagoDiagnosticInspection(private val source: MagoTool) : LocalIns
                 cell(combo).align(Align.FILL).resizableColumn()
             }
         }
+        // The initial choices use the global registrar; refresh when the panel gains a project context.
         optionsPanel.addHierarchyListener(HierarchyListener { event ->
             if (event.changeFlags and (HierarchyEvent.PARENT_CHANGED or HierarchyEvent.SHOWING_CHANGED).toLong() != 0L) refreshChoices()
         })
