@@ -129,7 +129,7 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         assertTrue(pane.preferredSize.height > 0)
     }
 
-    fun testRuleMetadataRendersTitleDividerAndDefaultLevelInNativePane() {
+    fun testRuleMetadataRendersSpacedOutlinedBadgesInNativePane() {
         val metadata = MagoRuleMetadata(
             code = "prefer-strict-types",
             name = "Prefer strict types",
@@ -142,10 +142,18 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         assertTrue(html.contains("<b><font size=\"+1\">Prefer strict types</font></b>"))
         assertTrue(html.contains("<hr>"))
         assertTrue(html.contains("Clarity"))
-        assertTrue(html.contains("Warning (default)"))
+        assertTrue(html.contains("Warning"))
+        assertFalse(html.contains("(default)"))
         assertTrue(html.contains("<b>explicit</b> types"))
         assertTrue(html.contains("com.intellij.icons.AllIcons.General.InspectionsEye"))
         assertTrue(html.contains("com.intellij.icons.AllIcons.General.Warning"))
+        assertTrue(html.contains("<td><b><font size=\"+1\">Prefer strict types</font></b></td>"))
+        assertTrue(html.contains("<td style=\"border:1px solid #"))
+        assertTrue(html.contains("cellspacing=\"4\""))
+        assertTrue(html.contains("cellpadding=\"3\""))
+        assertFalse(html.contains("bgcolor"))
+        assertFalse(html.contains("<font color"))
+        assertFalse(html.contains("(default)"))
 
         val pane = IdeTooltipManager.initPane(html, HintUtil.getInformationHint(), null)
         assertTrue(pane.preferredSize.width > 0)
@@ -158,6 +166,40 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         collect(pane.document.defaultRootElement)
         assertTrue(elementNames.contains("hr"))
         assertTrue(elementNames.contains("table"))
+        val document = pane.document as javax.swing.text.StyledDocument
+        assertTrue(document.getText(0, document.length).contains("Clarity"))
+        pane.setSize(pane.preferredSize)
+        pane.doLayout()
+        val rootView = pane.ui.getRootView(pane)
+        val viewAttributes = mutableListOf<String>()
+        fun collectViews(view: javax.swing.text.View) {
+            val attrs = view.attributes
+            if (attrs != null) {
+                val names = attrs.attributeNames
+                while (names.hasMoreElements()) {
+                    val key = names.nextElement()
+                    viewAttributes += "$key=${attrs.getAttribute(key)}"
+                }
+            }
+            for (index in 0 until view.viewCount) collectViews(view.getView(index))
+        }
+        collectViews(rootView)
+        val resolvedStyles = viewAttributes.joinToString("\n")
+        assertTrue(resolvedStyles, viewAttributes.any { it == "border-top-style=solid" })
+        assertTrue(resolvedStyles, viewAttributes.any { it == "border-top-width=1px" })
+    }
+
+    fun testRuleMetadataTextIsEscaped() {
+        val metadata = MagoRuleMetadata(
+            code = "safe", name = "Rule <unsafe>", category = "Safety & security",
+            level = "Warning <unsafe>",
+        )
+        val html = MagoLintTooltip.expanded(diagnostic(code = metadata.code, help = "Help"), metadata)!!
+        assertTrue(html.contains("Rule &lt;unsafe&gt;"))
+        assertTrue(html.contains("Safety &amp; security"))
+        assertTrue(html.contains("Warning &lt;unsafe&gt;"))
+        assertFalse(html.contains("(default)"))
+        assertFalse(html.contains("<unsafe>"))
     }
 
     fun testLargeRuleExamplesAreNotIncludedInCompactOrExpandedTooltip() {

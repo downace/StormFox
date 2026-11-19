@@ -20,11 +20,9 @@ import javax.swing.DefaultListCellRenderer
 import javax.swing.JComboBox
 import javax.swing.JPanel
 import javax.swing.DefaultComboBoxModel
-import javax.swing.JLabel
 import com.intellij.ui.components.JBCheckBox
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
-import com.intellij.util.ui.JBUI
+import com.intellij.ui.dsl.builder.Align
+import com.intellij.ui.dsl.builder.panel
 import java.awt.event.HierarchyEvent
 import java.awt.event.HierarchyListener
 
@@ -56,19 +54,10 @@ abstract class MagoDiagnosticInspection(private val source: MagoTool) : LocalIns
             file, manager, false, MagoDiagnosticAnnotator(source, true, (context as? GlobalInspectionContextBase)?.currentProfile))
 
     override fun createOptionsPanel(): JPanel {
-        val panel = JPanel(GridBagLayout())
-        val constraints = GridBagConstraints().apply {
-            gridx = 0
-            gridy = 0
-            gridwidth = 2
-            anchor = GridBagConstraints.WEST
-            fill = GridBagConstraints.HORIZONTAL
-        }
-        val override = JBCheckBox("Override severity levels", overrideSeverityLevels)
-        panel.add(override, constraints)
-        override.addItemListener { overrideSeverityLevels = override.isSelected }
-        var row = 1
         val combos = mutableListOf<Pair<JComboBox<HighlightSeverity>, () -> String>>()
+        lateinit var optionsPanel: JPanel
+        val override = JBCheckBox("Override severity levels", overrideSeverityLevels)
+        override.addItemListener { overrideSeverityLevels = override.isSelected }
         fun registeredSeverities(project: Project?): List<HighlightSeverity> {
             val registrar = SeverityRegistrar.getSeverityRegistrar(project)
             val severities = registrar.allSeverities.toMutableList()
@@ -76,7 +65,7 @@ abstract class MagoDiagnosticInspection(private val source: MagoTool) : LocalIns
             severities.sortWith { left, right -> -registrar.compare(left, right) }
             return severities
         }
-        fun addChoice(label: String, current: () -> String, update: (String) -> Unit) {
+        fun addChoice(current: () -> String, update: (String) -> Unit): JComboBox<HighlightSeverity> {
             val severities = registeredSeverities(null)
             val model = DefaultComboBoxModel(severities.toTypedArray())
             val combo = JComboBox(model)
@@ -93,29 +82,11 @@ abstract class MagoDiagnosticInspection(private val source: MagoTool) : LocalIns
             combo.selectedItem = severities.firstOrNull { it.name == current() }
             combo.isEnabled = overrideSeverityLevels
             combo.addActionListener { (combo.selectedItem as? HighlightSeverity)?.let { update(it.name) } }
-            panel.add(JLabel(label), GridBagConstraints().apply {
-                gridx = 0
-                gridy = row
-                anchor = GridBagConstraints.WEST
-                insets = JBUI.insets(4, 0, 0, 8)
-            })
-            panel.add(combo, GridBagConstraints().apply {
-                gridx = 1
-                gridy = row++
-                anchor = GridBagConstraints.WEST
-                fill = GridBagConstraints.HORIZONTAL
-                weightx = 1.0
-                insets = JBUI.insets(4, 0, 0, 0)
-            })
             override.addItemListener { combo.isEnabled = override.isSelected }
-            combos.add(combo to current)
+            return combo
         }
-        addChoice("Error", { errorSeverity }) { errorSeverity = it }
-        addChoice("Warning", { warningSeverity }) { warningSeverity = it }
-        addChoice("Help", { helpSeverity }) { helpSeverity = it }
-        addChoice("Note", { noteSeverity }) { noteSeverity = it }
         fun refreshChoices() {
-            val project = DataManager.getInstance().getDataContext(panel).getData(CommonDataKeys.PROJECT)
+            val project = DataManager.getInstance().getDataContext(optionsPanel).getData(CommonDataKeys.PROJECT)
             if (project == null) return
             val severities = registeredSeverities(project)
             combos.forEach { (combo, current) ->
@@ -126,10 +97,33 @@ abstract class MagoDiagnosticInspection(private val source: MagoTool) : LocalIns
                 combo.selectedItem = severities.firstOrNull { it.name == selected }
             }
         }
-        panel.addHierarchyListener(HierarchyListener { event ->
+        optionsPanel = panel {
+            row { cell(override) }
+            row("Error:") {
+                val combo = addChoice({ errorSeverity }) { errorSeverity = it }
+                combos.add(combo to { errorSeverity })
+                cell(combo).align(Align.FILL).resizableColumn()
+            }
+            row("Warning:") {
+                val combo = addChoice({ warningSeverity }) { warningSeverity = it }
+                combos.add(combo to { warningSeverity })
+                cell(combo).align(Align.FILL).resizableColumn()
+            }
+            row("Help:") {
+                val combo = addChoice({ helpSeverity }) { helpSeverity = it }
+                combos.add(combo to { helpSeverity })
+                cell(combo).align(Align.FILL).resizableColumn()
+            }
+            row("Note:") {
+                val combo = addChoice({ noteSeverity }) { noteSeverity = it }
+                combos.add(combo to { noteSeverity })
+                cell(combo).align(Align.FILL).resizableColumn()
+            }
+        }
+        optionsPanel.addHierarchyListener(HierarchyListener { event ->
             if (event.changeFlags and (HierarchyEvent.PARENT_CHANGED or HierarchyEvent.SHOWING_CHANGED).toLong() != 0L) refreshChoices()
         })
-        return panel
+        return optionsPanel
     }
 
     fun severityFor(level: String, defaultSeverity: HighlightSeverity, project: Project): HighlightSeverity {

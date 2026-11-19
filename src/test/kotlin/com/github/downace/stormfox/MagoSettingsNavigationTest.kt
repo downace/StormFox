@@ -8,6 +8,7 @@ import com.intellij.openapi.extensions.ProjectExtensionPointName
 import com.intellij.openapi.options.ConfigurableEP
 import com.intellij.openapi.options.ex.ConfigurableExtensionPointUtil
 import com.intellij.openapi.options.ex.Settings
+import com.intellij.ide.actionsOnSave.ActionsOnSaveConfigurable
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurable
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurableProvider
 import com.intellij.ui.components.ActionLink
@@ -16,6 +17,9 @@ import org.jetbrains.concurrency.AsyncPromise
 import org.jetbrains.concurrency.Promise
 import java.awt.Component
 import java.awt.Container
+import javax.swing.JPanel
+import javax.swing.JEditorPane
+import javax.swing.event.HyperlinkEvent
 
 class MagoSettingsNavigationTest : BasePlatformTestCase() {
     fun testRegisteredProjectConfigurableUsesPhpInspectionNavigationLink() {
@@ -112,6 +116,42 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         } finally {
             configurable.disposeUIResources()
             delegate.disposeUIResources()
+        }
+    }
+
+    fun testFormatterProseLinkSelectsActionsOnSaveInTheCurrentSettingsWindow() {
+        val actionsOnSave = object : SearchableConfigurable {
+            override fun getId(): String = ActionsOnSaveConfigurable.CONFIGURABLE_ID
+            override fun getDisplayName(): String = "Actions on Save"
+            override fun createComponent(): javax.swing.JComponent = JPanel()
+            override fun isModified(): Boolean = false
+            override fun apply() {}
+            override fun reset() {}
+        }
+        val group = object : ConfigurableGroup {
+            override fun getConfigurables(): Array<Configurable> = arrayOf(actionsOnSave)
+            override fun getDisplayName(): String = "Test"
+        }
+        var selected: Configurable? = null
+        val settings = object : Settings(listOf(group)) {
+            override fun selectImpl(configurable: Configurable): Promise<in Any> {
+                selected = configurable
+                return AsyncPromise<Any>().apply { setResult(Any()) }
+            }
+            override fun getConfigurableWithInitializedUiComponentImpl(configurable: Configurable, initializeUiComponentIfNotYet: Boolean): Configurable = configurable
+            override fun checkModifiedImpl(configurable: Configurable) {}
+            override fun setSearchText(option: String) {}
+        }
+        val configurable = MagoConfigurable(project) { settings }
+        try {
+            val root = configurable.createComponent()
+            val prose = descendants(root).filterIsInstance<JEditorPane>()
+                .single { it.text.contains("Mago Formatter replaces") }
+            val event = HyperlinkEvent(prose, HyperlinkEvent.EventType.ACTIVATED, null, "actionsOnSave")
+            prose.hyperlinkListeners.forEach { it.hyperlinkUpdate(event) }
+            assertSame(actionsOnSave, selected)
+        } finally {
+            configurable.disposeUIResources()
         }
     }
 

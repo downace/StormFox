@@ -7,6 +7,7 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import java.util.concurrent.CancellationException
 import com.intellij.openapi.fileChooser.FileChooserDescriptorFactory
 import com.intellij.openapi.options.Configurable
+import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.project.Project
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurable
@@ -16,46 +17,41 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.ActionLink
+import com.intellij.ui.dsl.builder.Align
+import com.intellij.ui.dsl.builder.panel
+import com.intellij.ui.dsl.builder.RightGap
 import com.intellij.util.ui.InlineIconButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.github.downace.stormfox.format.MagoValidation
 import com.github.downace.stormfox.status.MagoStatusBarWidget
-import java.awt.BorderLayout
 import java.awt.Color
 import java.awt.Dimension
-import java.awt.Font
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
 import java.awt.event.ActionListener
 import java.io.File
 import javax.swing.JComponent
-import javax.swing.JPanel
-import javax.swing.JSeparator
 import javax.swing.JTextField
 import javax.swing.SwingConstants
 import javax.swing.event.DocumentEvent
 
 private const val NOT_VALIDATED_TEXT = "Not validated"
 private const val CHECKING_TEXT = "Checking…"
-private const val SECTION_GAP = 12
-private const val OPTION_ROW_GAP = 8
-private const val CONTENT_INDENT = 24
-private const val HINT_INDENT = 20
-private const val MAX_STATUS_TEXT_LENGTH = 120
-private const val MAX_STATUS_WIDTH = 400
-private const val ELLIPSIS = "…"
 private const val SECTION_TITLE = "Formatter"
 private const val INSPECTIONS_SECTION_TITLE = "Inspections"
 private const val INSPECTIONS_CONFIGURABLE_ID = "Errors"
-private const val FORMATTER_HINT = "Mago replaces the IDE code style settings for PHP files."
-private const val TWIG_SUPPORT_HINT = "Twig formatting requires Mago 1.60 or newer."
-private const val FORMATTER_ON_SAVE_PREFIX = "<html>Enable&nbsp;<b>Reformat code</b>&nbsp;in&nbsp;</html>"
-private const val FORMATTER_ON_SAVE_LINK_SUFFIX = "\u00a0to format files on save."
+private const val COMMAND_HELP =
+    """<html>Enter one of:
+    <ul>
+      <li>Binary name, for example <code>mago</code> (if it is in <code>PATH</code>)</li>
+      <li>Full path, for example <code>/usr/local/bin/mago</code></li>
+      <li>Command, for example:<br><code>docker run --rm -i -v .:/app -w /app ghcr.io/carthage-software/mago:1.60.1</code></li>
+    </ul>
+    Do not include a Mago subcommand.<br>For <code>docker run</code>, include <code>-i</code> and disable TTY allocation.</html>"""
+private const val EXECUTION_ROOT_HELP =
+    "If Mago runs in a container, enter the project path inside the container, for example <code>/app</code>."
 
 private val SECONDARY_TEXT_COLOR: Color = UIUtil.getContextHelpForeground()
 private val ERROR_TEXT_COLOR: Color = JBColor.namedColor("Label.errorForeground", UIUtil.getErrorForeground())
-private val SEPARATOR_COLOR: Color = JBColor.namedColor("Group.separatorColor", JBColor.GRAY)
 
 class MagoConfigurable @JvmOverloads constructor(
     private val project: Project,
@@ -126,102 +122,6 @@ class MagoConfigurable @JvmOverloads constructor(
             },
         )
 
-        /**
-         * The command used to run Mago and the configuration file it should use.
-         *
-         * Labels and fields share a row and are anchored to the top of it, so that a label lines up
-         * with the field it belongs to instead of with the middle of the row.
-         */
-        private val generalBlock: JComponent = JPanel(GridBagLayout()).apply {
-            add(JBLabel("Mago command:"), cell(gridx = 0, gridy = 0, anchor = GridBagConstraints.WEST))
-            add(binaryRow.rowComponent, cell(gridx = 1, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH))
-            add(binaryRow.status.component, cell(gridx = 1, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)))
-
-            add(
-                hint(
-                    "<html>Enter one of:<ul style='margin-top:2px;margin-bottom:2px'>" +
-                        "<li>Binary name, for example <code>mago</code> (if it is in <code>PATH</code>)</li>" +
-                        "<li>Full path, for example <code>/usr/local/bin/mago</code></li>" +
-                        "<li>Command, for example:<br><code>docker run --rm -i -v .:/app<br>-w /app ghcr.io/carthage-software/mago:1.60.1</code></li>" +
-                        "</ul>Do not include a Mago subcommand.<br>For <code>docker run</code>, include <code>-i</code> and disable TTY allocation.</html>",
-                ),
-                cell(gridx = 1, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(2, 0, 0, 0)),
-            )
-            add(JBLabel("Execution project root:"), cell(gridx = 0, gridy = 3, anchor = GridBagConstraints.WEST, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
-            add(executionRootField, cell(gridx = 1, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
-            add(hint("<html>If Mago runs in a container, enter the project path inside the container,<br>for example <code>/app</code>.</html>"), cell(gridx = 1, gridy = 4, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(2, 0, 0, 0)))
-            add(JBLabel("Default configuration file:"), cell(gridx = 0, gridy = 5, anchor = GridBagConstraints.WEST, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
-            add(configRow.rowComponent, cell(gridx = 1, gridy = 5, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(JBUI.scale(SECTION_GAP), 0, 0, 0)))
-            add(configRow.status.component, cell(gridx = 1, gridy = 6, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(2, 0, 0, 0)))
-            add(showStatusWidgetCheckBox, cell(gridx = 1, gridy = 7, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(6, 0, 0, 0)))
-        }
-
-        /**
-         * The per feature settings, separated from the general ones by a titled rule.
-         */
-        private val formatterBlock: JComponent = JPanel(GridBagLayout()).apply {
-            add(
-                sectionRule(SECTION_TITLE),
-                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(SECTION_GAP, 0, SECTION_GAP, 0)),
-            )
-            add(
-                JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
-                    add(JBLabel("Use Mago formatter for:"))
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    add(phpFormatterCheckBox)
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    add(twigFormatterCheckBox)
-                },
-                cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, CONTENT_INDENT, 0, 0)),
-            )
-            add(
-                hint(FORMATTER_HINT),
-                cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, CONTENT_INDENT + HINT_INDENT, 0, 0)),
-            )
-            add(
-                hint(TWIG_SUPPORT_HINT),
-                cell(gridx = 0, gridy = 3, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(2, CONTENT_INDENT + HINT_INDENT, 0, 0)),
-            )
-            add(
-                JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
-                    add(JBLabel(FORMATTER_ON_SAVE_PREFIX))
-                    add(
-                        ActionsOnSaveConfigurable.createGoToPageInSettingsLink(
-                            "Actions on Save",
-                            ActionsOnSaveConfigurable.CONFIGURABLE_ID,
-                        ),
-                    )
-                    add(JBLabel(FORMATTER_ON_SAVE_LINK_SUFFIX))
-                },
-                cell(gridx = 0, gridy = 4, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(OPTION_ROW_GAP, CONTENT_INDENT, 0, 0)),
-            )
-        }
-
-        private val inspectionsBlock: JComponent = JPanel(GridBagLayout()).apply {
-            add(
-                sectionRule(INSPECTIONS_SECTION_TITLE),
-                cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(SECTION_GAP, 0, SECTION_GAP, 0)),
-            )
-            add(
-                JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 0, 0)).apply {
-                    inspectionLink("Linter", "MagoLint")
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    add(JBLabel("·"))
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    inspectionLink("Analyzer", "MagoAnalyze")
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    add(JBLabel("·"))
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    inspectionLink("Guard", "MagoGuard")
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    add(JBLabel("·"))
-                    add(javax.swing.Box.createHorizontalStrut(JBUI.scale(8)))
-                    inspectionLink("Twig Linter", "MagoTwigLint")
-                },
-                cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, insets = JBUI.insets(0, CONTENT_INDENT, 0, 0)),
-            )
-        }
-
         init {
             val markValidationStale = object : DocumentAdapter() {
                 override fun textChanged(e: DocumentEvent) {
@@ -233,19 +133,46 @@ class MagoConfigurable @JvmOverloads constructor(
             executionRootField.document.addDocumentListener(markValidationStale)
         }
 
-        /**
-         * The content is put into a BorderLayout.NORTH: a GridBagLayout would share the extra height
-         * between its rows and the page would end up vertically centred in the dialog.
-         */
-        val panel: JComponent = JPanel(BorderLayout()).apply {
-            add(
-                JPanel(GridBagLayout()).apply {
-                    add(generalBlock, cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
-                    add(formatterBlock, cell(gridx = 0, gridy = 1, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
-                    add(inspectionsBlock, cell(gridx = 0, gridy = 2, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL))
-                },
-                BorderLayout.NORTH,
-            )
+        val panel: JComponent = panel {
+            row("Mago command:") {
+                cell(binaryRow.rowComponent).align(Align.FILL).resizableColumn()
+                contextHelp(COMMAND_HELP, "Mago command")
+            }
+            row("") { cell(binaryRow.status.component).align(Align.FILL).resizableColumn() }
+            row("Execution project root:") {
+                cell(executionRootField).align(Align.FILL).resizableColumn()
+                contextHelp(EXECUTION_ROOT_HELP, "Execution project root")
+            }
+            row("Default configuration file:") { cell(configRow.rowComponent).align(Align.FILL).resizableColumn() }
+            row("") { cell(configRow.status.component).align(Align.FILL).resizableColumn() }
+            row { cell(showStatusWidgetCheckBox) }
+            group(SECTION_TITLE) {
+                row {
+                    label("Use Mago Formatter for:")
+                    cell(phpFormatterCheckBox)
+                    cell(twigFormatterCheckBox).gap(RightGap.SMALL)
+                    cell(JBLabel("(requires Mago 1.60+)").apply {
+                        font = twigFormatterCheckBox.font
+                        foreground = SECONDARY_TEXT_COLOR
+                    })
+                }
+                row {
+                    text(
+                        """Mago Formatter replaces the IDE code style settings for PHP files. Enable <b>Reformat code</b> in <a href="actionsOnSave">Actions on Save</a> to format files on save.""",
+                        action = { event ->
+                            if (event.eventType == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED) {
+                                openActionsOnSave()
+                            }
+                        },
+                    ).resizableColumn()
+                }
+            }
+            group(INSPECTIONS_SECTION_TITLE) {
+                row { cell(ActionLink("Linter") { selectInspection("MagoLint") }) }
+                row { cell(ActionLink("Analyzer") { selectInspection("MagoAnalyze") }) }
+                row { cell(ActionLink("Guard") { selectInspection("MagoGuard") }) }
+                row { cell(ActionLink("Twig Linter") { selectInspection("MagoTwigLint") }) }
+            }
         }
 
         fun isModified(): Boolean {
@@ -283,60 +210,26 @@ class MagoConfigurable @JvmOverloads constructor(
             configRow.status.show(StatusLine.Kind.EMPTY, "")
         }
 
-        /**
-         * A hint line: small secondary text that explains the setting above it.
-         */
-        private fun hint(text: String): JBLabel = JBLabel(text).apply {
-            font = JBUI.Fonts.smallFont()
-            foreground = SECONDARY_TEXT_COLOR
-        }
-
-        /**
-         * A titled rule: the section title on the left, a thin line running to the right edge.
-         */
-        private fun sectionRule(title: String): JComponent {
-            val titleLabel = JBLabel(title).apply {
-                font = UIUtil.getLabelFont().deriveFont(Font.BOLD)
-                foreground = UIUtil.getLabelForeground()
-            }
-            val line = JSeparator(SwingConstants.HORIZONTAL).apply {
-                foreground = SEPARATOR_COLOR
-            }
-            return JPanel(GridBagLayout()).apply {
-                isOpaque = false
-                add(titleLabel, cell(gridx = 0, gridy = 0, anchor = GridBagConstraints.WEST, insets = JBUI.insets(0, 0, 0, JBUI.scale(8))))
-                add(line, cell(gridx = 1, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.CENTER))
-            }
-        }
-
-        private fun JPanel.inspectionLink(label: String, inspectionTool: String) {
-            add(ActionLink(label) {
-                val settings = settingsForComponent(this)
-                val inspections = settings?.find(ErrorsConfigurable::class.java)
-                if (inspections != null) {
-                    settings.select(inspections).doWhenDone {
-                        if (settings.getConfigurableWithInitializedUiComponent(INSPECTIONS_CONFIGURABLE_ID, true) != null) {
-                            inspections.selectInspectionTool(inspectionTool)
-                        }
+        private fun selectInspection(inspectionTool: String) {
+            val settings = settingsForComponent(panel)
+            val inspections = settings?.find(ErrorsConfigurable::class.java)
+            if (inspections != null) {
+                settings.select(inspections).doWhenDone {
+                    if (settings.getConfigurableWithInitializedUiComponent(INSPECTIONS_CONFIGURABLE_ID, true) != null) {
+                        inspections.selectInspectionTool(inspectionTool)
                     }
                 }
-            })
+            }
         }
 
-        private fun cell(
-            gridx: Int,
-            gridy: Int,
-            weightx: Double = 0.0,
-            fill: Int = GridBagConstraints.NONE,
-            anchor: Int = GridBagConstraints.NORTHWEST,
-            insets: java.awt.Insets = JBUI.insets(0, 0, 0, 0),
-        ): GridBagConstraints = GridBagConstraints().apply {
-            this.gridx = gridx
-            this.gridy = gridy
-            this.weightx = weightx
-            this.fill = fill
-            this.anchor = anchor
-            this.insets = insets
+        private fun openActionsOnSave() {
+            val settings = settingsForComponent(panel)
+            val configurable = settings?.find(ActionsOnSaveConfigurable.CONFIGURABLE_ID)
+            if (settings != null && configurable != null) {
+                settings.select(configurable)
+            } else {
+                ShowSettingsUtil.getInstance().showSettingsDialog(project, ActionsOnSaveConfigurable::class.java)
+            }
         }
 
         /**
@@ -356,12 +249,11 @@ class MagoConfigurable @JvmOverloads constructor(
 
             var checkRunning = false
 
-            val rowComponent: JComponent = JPanel(GridBagLayout()).apply {
-                add(
-                    field,
-                    cell(gridx = 0, gridy = 0, weightx = 1.0, fill = GridBagConstraints.HORIZONTAL, anchor = GridBagConstraints.NORTH, insets = JBUI.insets(0, 0, 0, JBUI.scale(4))),
-                )
-                add(validateButton, cell(gridx = 1, gridy = 0, anchor = GridBagConstraints.CENTER))
+            val rowComponent: JComponent = panel {
+                row {
+                    cell(field).align(Align.FILL).resizableColumn()
+                    cell(validateButton)
+                }
             }
 
             init {
@@ -419,17 +311,6 @@ class MagoConfigurable @JvmOverloads constructor(
         enum class Kind { EMPTY, CHECKING, SUCCESS, ERROR, STALE }
 
         val label = StatusLabel()
-        private val warningIcon = JBLabel(AllIcons.General.BalloonWarning).apply {
-            isVisible = false
-            toolTipText = null
-            accessibleContext.accessibleName = "Version compatibility warning"
-        }
-        private val content = JPanel(java.awt.FlowLayout(java.awt.FlowLayout.LEFT, JBUI.scale(4), 0)).apply {
-            isOpaque = false
-            add(label)
-            add(warningIcon)
-        }
-
         var kind: Kind = Kind.EMPTY
             private set
 
@@ -440,23 +321,14 @@ class MagoConfigurable @JvmOverloads constructor(
 
         fun show(kind: Kind, message: String) {
             this.kind = kind
-            label.setMessage(message)
-            setWarning(null)
+            label.setMessage(message, null)
             label.foreground = if (kind == Kind.ERROR) ERROR_TEXT_COLOR else SECONDARY_TEXT_COLOR
         }
 
         fun showSuccess(message: String, warning: String?) {
             this.kind = Kind.SUCCESS
-            label.setMessage(message)
+            label.setMessage(message, warning)
             label.foreground = SECONDARY_TEXT_COLOR
-            setWarning(warning)
-        }
-
-        private fun setWarning(warning: String?) {
-            warningIcon.isVisible = !warning.isNullOrBlank()
-            warningIcon.toolTipText = warning
-            warningIcon.accessibleContext.accessibleDescription = warning
-            content.revalidate()
         }
 
         fun markStale() {
@@ -465,52 +337,34 @@ class MagoConfigurable @JvmOverloads constructor(
             }
         }
 
-        val component: JComponent get() = content
+        val component: JComponent get() = label
     }
 
     /**
-     * A status label that a long mago message cannot use to widen the settings page.
-     *
-     * The message is elided to a fixed width and the full text goes into the tooltip.
+     * JLabel keeps the full response for its native clipping and tooltip; the status row supplies its width.
      */
     private class StatusLabel : JBLabel() {
 
-        fun setMessage(message: String) {
-            toolTipText = if (message.isEmpty()) null else message
-            text = elide(message)
+        fun setMessage(message: String, warning: String?) {
+            icon = if (warning.isNullOrBlank()) null else AllIcons.General.BalloonWarning
+            horizontalTextPosition = SwingConstants.LEFT
+            toolTipText = when {
+                message.isEmpty() && warning.isNullOrBlank() -> null
+                warning.isNullOrBlank() -> message
+                message.isEmpty() -> warning
+                else -> "$message\n\nVersion compatibility warning: $warning"
+            }
+            accessibleContext?.accessibleDescription = warning
+            text = message
         }
 
         override fun getPreferredSize(): Dimension {
-            val preferred = super.getPreferredSize()
-            val maxWidth = JBUI.scale(MAX_STATUS_WIDTH)
-            return if (preferred.width <= maxWidth) preferred else Dimension(maxWidth, preferred.height)
+            return Dimension(0, super.getPreferredSize().height)
         }
 
         override fun getMinimumSize(): Dimension {
             return Dimension(0, super.getMinimumSize().height)
         }
 
-        private fun elide(message: String): String {
-            if (message.isEmpty()) return message
-            val singleLine = message.replace(Regex("\\s+"), " ").trim()
-            val metrics = getFontMetrics(font)
-            val maxWidth = JBUI.scale(MAX_STATUS_WIDTH)
-            if (singleLine.length <= MAX_STATUS_TEXT_LENGTH && metrics.stringWidth(singleLine) <= maxWidth) {
-                return singleLine
-            }
-            val characters = singleLine.toCharArray()
-            val limit = minOf(MAX_STATUS_TEXT_LENGTH, characters.size)
-            val ellipsisWidth = metrics.stringWidth(ELLIPSIS)
-            var end = 0
-            while (end < limit && metrics.charsWidth(characters, 0, end + 1) + ellipsisWidth <= maxWidth) {
-                end++
-            }
-            var elided = singleLine.substring(0, end)
-            val lastSpace = elided.lastIndexOf(' ')
-            if (lastSpace > elided.length / 2) {
-                elided = elided.substring(0, lastSpace)
-            }
-            return elided.trimEnd() + ELLIPSIS
-        }
     }
 }

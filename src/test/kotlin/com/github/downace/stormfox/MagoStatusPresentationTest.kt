@@ -13,11 +13,12 @@ import com.github.downace.stormfox.status.createElapsedLabel
 import com.github.downace.stormfox.status.StableRowParts
 import com.github.downace.stormfox.status.statusPresentationText
 import com.github.downace.stormfox.status.statusState
-import java.awt.Dimension
-import javax.swing.Box
-import javax.swing.BoxLayout
+import com.github.downace.stormfox.status.MagoStatusBarWidget
+import java.awt.Container
+import javax.swing.JComponent
 import javax.swing.JPanel
 import com.intellij.ui.components.JBLabel
+import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertEquals
 import org.junit.Test
@@ -129,30 +130,6 @@ class MagoStatusPresentationTest {
     }
 
     @Test
-    fun `elapsed label keeps visible height from idle before activity begins`() {
-        val elapsed = createElapsedLabel("")
-        val gear = JPanel()
-        val actions = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.X_AXIS)
-            add(elapsed)
-            add(Box.createHorizontalStrut(8))
-            add(gear)
-            size = preferredSize
-            doLayout()
-        }
-        val firstBounds = elapsed.bounds
-        elapsed.text = "4.2s"
-        actions.doLayout()
-        val runningBounds = elapsed.bounds
-        elapsed.text = ""
-        actions.doLayout()
-        assertTrue(firstBounds.height > 0)
-        assertEquals(firstBounds.height, runningBounds.height)
-        assertEquals(firstBounds.width, runningBounds.width)
-        assertTrue(gear.x >= elapsed.x + elapsed.width)
-    }
-
-    @Test
     fun `waiting is distinct from running`() {
         assertEquals(MagoStatusState.WAITING, statusState(MagoDiagnosticActivity.Snapshot(listOf(entry()), emptyList(), emptyList())))
         assertEquals(MagoStatusState.RUNNING, statusState(MagoDiagnosticActivity.Snapshot(emptyList(), listOf(entry()), emptyList())))
@@ -163,4 +140,64 @@ class MagoStatusPresentationTest {
         assertEquals(MagoStatusState.FAILED, statusState(MagoDiagnosticActivity.Snapshot(emptyList(), emptyList(), listOf(entry("Unable to start mago")))))
         assertEquals(MagoStatusState.FAILED, statusState(MagoDiagnosticActivity.Snapshot(emptyList(), listOf(entry()), listOf(entry("Process failed")))))
     }
+}
+
+class MagoStatusPopupGeometryTest : BasePlatformTestCase() {
+    fun testPopupDslRowsFitAndReserveIdleElapsedGeometry() {
+        val widget = MagoStatusBarWidget(project)
+        com.intellij.openapi.util.Disposer.register(testRootDisposable, widget)
+        val createPanel = MagoStatusBarWidget::class.java.getDeclaredMethod(
+            "detailsPanel", Set::class.java, MagoDiagnosticActivity.Snapshot::class.java,
+        ).apply { isAccessible = true }
+        val view = createPanel.invoke(
+            widget, MagoTool.entries.toSet(),
+            MagoDiagnosticActivity.Snapshot(emptyList(), emptyList(), emptyList()),
+        ) ?: error("Expected popup view")
+        val root = view.javaClass.getDeclaredField("panel").apply { isAccessible = true }.get(view) as JPanel
+        val rows = view.javaClass.getDeclaredField("rows").apply { isAccessible = true }
+            .get(view) as Map<*, *>
+        assertEquals(com.intellij.util.ui.JBUI.insets(10, 12), root.insets)
+        root.setSize(root.preferredSize)
+        layoutRecursively(root)
+        val initialPreferredSize = root.preferredSize
+        val geometry = rows.values.filterNotNull().map { row ->
+            val component = row.field<JPanel>("component")
+            assertEquals(java.awt.Insets(0, 0, 0, 0), component.insets)
+            val dot = row.field<JComponent>("dot")
+            val status = row.field<JComponent>("statusText")
+            val elapsed = row.field<JBLabel>("elapsedText")
+            val gear = row.field<JComponent>("gear")
+            val dotBounds = javax.swing.SwingUtilities.convertRectangle(dot.parent, dot.bounds, root)
+            val statusBounds = javax.swing.SwingUtilities.convertRectangle(status.parent, status.bounds, root)
+            val elapsedBounds = javax.swing.SwingUtilities.convertRectangle(elapsed.parent, elapsed.bounds, root)
+            val gearBounds = javax.swing.SwingUtilities.convertRectangle(gear.parent, gear.bounds, root)
+            listOf(dotBounds, statusBounds, elapsedBounds, gearBounds).forEach { bounds ->
+                assertTrue("Control lies outside popup: $bounds / ${root.size}", root.bounds.contains(bounds))
+            }
+            assertTrue("Status and elapsed columns overlap", statusBounds.x + statusBounds.width <= elapsedBounds.x)
+            assertTrue("Gear should sit to the right of elapsed text", gearBounds.x >= elapsedBounds.x + elapsedBounds.width)
+            assertTrue("Elapsed column should reserve visible space", elapsedBounds.width > 0 && elapsedBounds.height > 0)
+            Triple(component, elapsed, gearBounds)
+        }
+        assertEquals("All gear actions should align on the right", 1, geometry.map { it.third.x }.distinct().size)
+        geometry.forEach { (_, elapsed, _) -> elapsed.text = "999.9s" }
+        layoutRecursively(root)
+        assertEquals(initialPreferredSize, root.preferredSize)
+        geometry.forEach { (component, elapsed, initialGearBounds) ->
+            val currentElapsedBounds = javax.swing.SwingUtilities.convertRectangle(elapsed.parent, elapsed.bounds, root)
+            val currentGear = rows.values.filterNotNull().first { it.field<JComponent>("component") === component }
+                .field<JComponent>("gear")
+            val currentGearBounds = javax.swing.SwingUtilities.convertRectangle(currentGear.parent, currentGear.bounds, root)
+            assertEquals(initialGearBounds, currentGearBounds)
+            assertEquals(reservedElapsedColumnWidth(elapsed.getFontMetrics(elapsed.font), 0), currentElapsedBounds.width)
+        }
+    }
+
+    private fun layoutRecursively(container: Container) {
+        container.doLayout()
+        container.components.filterIsInstance<Container>().forEach(::layoutRecursively)
+    }
+
+    private inline fun <reified T> Any.field(name: String): T =
+        javaClass.getDeclaredField(name).apply { isAccessible = true }.get(this) as T
 }

@@ -4,55 +4,240 @@ import com.github.downace.stormfox.settings.MagoConfigurable
 import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.status.MagoStatusBarWidget
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.awt.GridBagLayout
-import java.awt.Point
+import com.intellij.ui.ContextHelpLabel
 import java.awt.Container
+import java.awt.Component
+import java.awt.Point
+import javax.swing.JLabel
+import javax.swing.JEditorPane
 import javax.swing.SwingUtilities
 import javax.swing.JCheckBox
 import javax.swing.JTextField
 
 class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
-    fun testFormatterAndInspectionRowsShareAnIndentedLeadingEdge() {
+    fun testFormatterAndInspectionContentShareIndentedLeadingEdge() {
         val configurable = MagoConfigurable(project)
         try {
             val root = configurable.createComponent() as Container
-            layoutTree(root)
+            layoutAt(root, 800)
+            val labels = descendants(root).filterIsInstance<JLabel>()
+            val selector = labels.single { it.text == "Use Mago Formatter for:" }
+            val prose = descendants(root).filterIsInstance<JEditorPane>()
+                .single { it.text.contains("Mago Formatter replaces") }
+            val inspection = descendants(root).single { it is com.intellij.ui.components.ActionLink && it.text == "Linter" }
+            assertTrue("Formatter options should precede their explanation",
+                SwingUtilities.convertPoint(selector, Point(0, 0), root).y <
+                    SwingUtilities.convertPoint(prose, Point(0, 0), root).y)
+            val selectorX = SwingUtilities.convertPoint(selector, Point(0, 0), root).x
+            assertEquals(selectorX, SwingUtilities.convertPoint(inspection, Point(0, 0), root).x)
+            val sectionHeadings = labels.filter { it.text in listOf("Formatter", "Inspections") }
+            assertEquals(listOf("Formatter", "Inspections"), sectionHeadings.map { it.text }.toList())
+            sectionHeadings.forEach { heading ->
+                assertTrue("Section body should be indented from ${heading.text}",
+                    selectorX > SwingUtilities.convertPoint(heading, Point(0, 0), root).x)
+            }
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
+    fun testGeneralFieldsExpandWithTheSettingsPage() {
+        val configurable = MagoConfigurable(project)
+        try {
+            val root = configurable.createComponent() as Container
             val ui = MagoConfigurable::class.java.getDeclaredField("ui").apply { isAccessible = true }.get(configurable)
-            val formatter = ui.javaClass.getDeclaredField("formatterBlock").apply { isAccessible = true }.get(ui) as javax.swing.JPanel
-            val inspections = ui.javaClass.getDeclaredField("inspectionsBlock").apply { isAccessible = true }.get(ui) as javax.swing.JPanel
-            val formatterLayout = formatter.layout as GridBagLayout
-            val inspectionsLayout = inspections.layout as GridBagLayout
-            val formatterContent = formatterLayout.getConstraints(formatter.getComponent(1))
-            val onSave = formatterLayout.getConstraints(formatter.getComponent(4))
-            val inspectionContent = inspectionsLayout.getConstraints(inspections.getComponent(1))
-            val selectorLabel = (formatter.getComponent(1) as Container).getComponent(0)
-            val onSaveLabel = (formatter.getComponent(4) as Container).getComponent(0)
-            val firstInspectionLink = (inspections.getComponent(1) as Container).getComponent(0)
+            val fields = listOf("binaryField", "executionRootField", "configField").map { name ->
+                ui.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(ui) as Component
+            }
+            layoutAt(root, 640)
+            val narrow = fields.map { it.width }
+            layoutAt(root, 960)
+            val wide = fields.map { it.width }
+            assertEquals(3, wide.size)
+            wide.zip(narrow).forEach { (larger, smaller) ->
+                assertTrue("Field should grow with the settings page ($smaller -> $larger)", larger > smaller)
+            }
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
+    fun testGeneralHintsAndStatusUseTheirFieldColumnWithoutExtraCheckboxIndent() {
+        val configurable = MagoConfigurable(project)
+        try {
+            val root = configurable.createComponent() as Container
+            layoutAt(root, 800)
+            val ui = MagoConfigurable::class.java.getDeclaredField("ui").apply { isAccessible = true }.get(configurable)
+            fun field(name: String): Component =
+                ui.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(ui) as Component
+            fun x(component: Component) = SwingUtilities.convertPoint(component, Point(0, 0), root).x
+            fun y(component: Component) = SwingUtilities.convertPoint(component, Point(0, 0), root).y
 
-            assertTrue(formatterContent.insets.left > 0)
-            assertEquals(formatterContent.insets.left, onSave.insets.left)
-            assertEquals(formatterContent.insets.left, inspectionContent.insets.left)
-            assertEquals(0, formatterLayout.getConstraints(formatter.getComponent(0)).insets.left)
-            assertEquals(0, inspectionsLayout.getConstraints(inspections.getComponent(0)).insets.left)
-            assertEquals(0, formatterLayout.getConstraints(formatter.getComponent(2)).insets.top)
-            assertEquals(2, formatterLayout.getConstraints(formatter.getComponent(3)).insets.top)
-            assertEquals(
-                SwingUtilities.convertPoint(selectorLabel, Point(0, 0), formatter).x,
-                SwingUtilities.convertPoint(onSaveLabel, Point(0, 0), formatter).x,
-            )
-            assertEquals(
-                SwingUtilities.convertPoint(selectorLabel, Point(0, 0), formatter).x,
-                SwingUtilities.convertPoint(firstInspectionLink, Point(0, 0), inspections).x,
-            )
+            val binary = field("binaryField")
+            val executionRoot = field("executionRootField")
+            val config = field("configField")
+            val helpLabels = descendants(root).filterIsInstance<ContextHelpLabel>().toList()
+            val status = ui.javaClass.getDeclaredField("binaryRow").apply { isAccessible = true }.get(ui)
+                .let { it.javaClass.getDeclaredField("status").apply { isAccessible = true }.get(it) }
+                .let { it.javaClass.getDeclaredMethod("getComponent").apply { isAccessible = true }.invoke(it) as Component }
+            val checkbox = descendants(root).filterIsInstance<JCheckBox>()
+                .single { it.text == "Show Mago status bar widget" }
+
+            assertEquals(2, helpLabels.size)
+            assertEquals(1, descendants(root).filterIsInstance<JLabel>().count { it.text == "Mago command:" })
+            assertEquals(1, descendants(root).filterIsInstance<JLabel>().count { it.text == "Execution project root:" })
+            assertFalse(descendants(root).filterIsInstance<JLabel>().any { it.text?.contains("Enter one of:") == true })
+            assertFalse(descendants(root).filterIsInstance<JLabel>().any { it.text?.contains("If Mago runs in a container") == true })
+            assertTrue("Validation status should sit under its input: ${x(binary)} vs ${x(status)}",
+                kotlin.math.abs(x(binary) - x(status)) <= 4)
+            assertTrue("Status line should remain directly below the config field", y(checkbox) - (y(config) + config.height) < 50)
+            assertTrue("Status widget toggle should align with the page content, not the input column", x(checkbox) < x(config))
         } finally {
             configurable.disposeUIResources()
         }
     }
 
+    fun testFormatterHelpAndNavigationLinksStayCompact() {
+        val configurable = MagoConfigurable(project)
+        try {
+            val root = configurable.createComponent() as Container
+            layoutAt(root, 800)
+            val labels = descendants(root).filterIsInstance<JLabel>()
+            val text = descendants(root).filterIsInstance<JEditorPane>()
+                .single { it.text.contains("Mago Formatter replaces") }
+            val php = descendants(root).filterIsInstance<JCheckBox>().single { it.text == "PHP" }
+            val twig = descendants(root).filterIsInstance<JCheckBox>().single { it.text == "Twig" }
+            val requirement = labels.single { it.text?.contains("requires Mago 1.60+") == true }
+            assertEquals(php.font.size, text.font.size)
+            assertEquals(twig.font.size, requirement.font.size)
+            assertEquals(twig.foreground, php.foreground)
+            assertEquals(com.intellij.util.ui.UIUtil.getContextHelpForeground(), requirement.foreground)
+            assertTrue(text.text.replace(Regex("\\s+"), " ").contains("Reformat code"))
+
+            val prose = descendants(root).filterIsInstance<JEditorPane>()
+                .single { it.text.contains("Mago Formatter replaces") }
+            val proseMarkup = prose.text.replace(Regex("\\s+"), " ")
+            assertTrue(proseMarkup.contains("Enable <b>Reformat code</b> in <a href=\"actionsOnSave\">Actions on Save</a>"))
+            assertTrue(proseMarkup.contains("to format files on save."))
+            layoutAt(root, 800)
+            val wideHeight = prose.height
+            val wideWidth = prose.width
+            val freshConfigurable = MagoConfigurable(project)
+            val narrowSize = try {
+                val freshRoot = freshConfigurable.createComponent() as Container
+                repeat(3) { layoutAt(freshRoot, 440) }
+                val freshProse = descendants(freshRoot).filterIsInstance<JEditorPane>()
+                    .single { it.text.contains("Mago Formatter replaces") }
+                val renderedText = freshProse.document.getText(0, freshProse.document.length)
+                    .replace(Regex("\\s+"), " ")
+                assertTrue("Wrapped prose retains its final sentence: $renderedText",
+                    renderedText.contains("to format files on save."))
+                freshProse.size
+            } finally {
+                freshConfigurable.disposeUIResources()
+            }
+            assertTrue("The narrow form should constrain the paragraph ($wideWidth -> ${narrowSize.width})",
+                narrowSize.width < wideWidth)
+            assertTrue("Formatter paragraph should wrap at a narrower available width ($wideHeight -> ${narrowSize.height})",
+                narrowSize.height > wideHeight)
+
+            val inspectionLinks = descendants(root).filterIsInstance<com.intellij.ui.components.ActionLink>()
+                .filter { it.text in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }.toList()
+            assertEquals(listOf("Linter", "Analyzer", "Guard", "Twig Linter"), inspectionLinks.map { it.text })
+            inspectionLinks.zipWithNext().forEach { (before, after) ->
+                assertTrue("Inspection links should form a vertical list",
+                    SwingUtilities.convertPoint(after, Point(0, 0), root).y >
+                        SwingUtilities.convertPoint(before, Point(0, 0), root).y)
+            }
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
+    fun testValidationStatusUsesAvailableWidthWithoutWideningThePage() {
+        val configurable = MagoConfigurable(project)
+        try {
+            val root = configurable.createComponent() as Container
+            val ui = MagoConfigurable::class.java.getDeclaredField("ui").apply { isAccessible = true }.get(configurable)
+            val binaryRow = ui.javaClass.getDeclaredField("binaryRow").apply { isAccessible = true }.get(ui)
+            val status = binaryRow.javaClass.getDeclaredField("status").apply { isAccessible = true }.get(binaryRow)
+            layoutAt(root, 640)
+            val preferredWidthBeforeMessage = root.preferredSize.width
+            val kind = status.javaClass.declaredClasses.single { it.isEnum }
+            val errorKind = kind.enumConstants.single { it.toString() == "ERROR" }
+            status.javaClass.getDeclaredMethod("show", kind, String::class.java).apply { isAccessible = true }
+                .invoke(status, errorKind, "Mago returned a very long validation response ".repeat(20))
+            val label = status.javaClass.getDeclaredField("label").apply { isAccessible = true }.get(status) as JLabel
+            val fullMessage = "Mago returned a very long validation response ".repeat(20)
+            assertEquals(fullMessage, label.text)
+            assertEquals(fullMessage, label.toolTipText)
+
+            layoutAt(root, 640)
+            assertEquals("A long process response must not widen the settings page",
+                preferredWidthBeforeMessage, root.preferredSize.width)
+            val narrowStatusWidth = label.width
+            layoutAt(root, 960)
+            val wideStatusWidth = label.width
+            assertTrue("Status should use the available field width ($narrowStatusWidth -> $wideStatusWidth)",
+                wideStatusWidth > narrowStatusWidth)
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
+
+    fun testVersionWarningIconStaysBesideShortStatusTextAndKeepsTooltip() {
+        val configurable = MagoConfigurable(project)
+        try {
+            val root = configurable.createComponent() as Container
+            val ui = MagoConfigurable::class.java.getDeclaredField("ui").apply { isAccessible = true }.get(configurable)
+            val binaryRow = ui.javaClass.getDeclaredField("binaryRow").apply { isAccessible = true }.get(ui)
+            val status = binaryRow.javaClass.getDeclaredField("status").apply { isAccessible = true }.get(binaryRow)
+            val message = "mago 1.24.0"
+            val warning = "This version does not support filepath-aware exclusions."
+            status.javaClass.getDeclaredMethod("showSuccess", String::class.java, String::class.java)
+                .apply { isAccessible = true }.invoke(status, message, warning)
+            layoutAt(root, 800)
+
+            val label = status.javaClass.getDeclaredField("label").apply { isAccessible = true }.get(status) as JLabel
+            assertEquals(message, label.text)
+            assertTrue(label.toolTipText.contains(message))
+            assertTrue(label.toolTipText.contains(warning))
+            assertTrue(label.accessibleContext.accessibleDescription.contains(warning))
+            assertNotNull(label.icon)
+            assertEquals(javax.swing.SwingConstants.LEFT, label.horizontalTextPosition)
+
+            val iconBounds = java.awt.Rectangle()
+            val textBounds = java.awt.Rectangle()
+            javax.swing.SwingUtilities.layoutCompoundLabel(
+                label,
+                label.getFontMetrics(label.font),
+                label.text,
+                label.icon,
+                label.verticalAlignment,
+                label.horizontalAlignment,
+                label.verticalTextPosition,
+                label.horizontalTextPosition,
+                java.awt.Rectangle(0, 0, label.width, label.height),
+                iconBounds,
+                textBounds,
+                label.iconTextGap,
+            )
+            assertEquals("Warning should follow the version with native label spacing",
+                textBounds.x + textBounds.width + label.iconTextGap, iconBounds.x)
+            assertTrue("Warning should remain beside the version, not at the far edge",
+                iconBounds.x + iconBounds.width < label.width - 30)
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
+    private fun layoutAt(root: Container, width: Int) {
+        root.setSize(width, root.preferredSize.height)
+        layoutTree(root)
+    }
     private fun layoutTree(container: Container) {
-        container.setSize(container.preferredSize)
         container.doLayout()
         container.components.filterIsInstance<Container>().forEach(::layoutTree)
+    }
+    private fun descendants(component: Component): Sequence<Component> = sequence {
+        yield(component)
+        if (component is Container) component.components.forEach { yieldAll(descendants(it)) }
     }
 
     fun testConstructorDoesNotAllocateSettingsUi() {

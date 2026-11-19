@@ -25,6 +25,8 @@ import com.intellij.ui.JBColor
 import com.intellij.ui.components.IconLabelButton
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
+import com.intellij.ui.dsl.builder.Align
+import com.intellij.ui.dsl.builder.panel
 import java.awt.Color
 import java.awt.BorderLayout
 import java.awt.Component
@@ -34,11 +36,7 @@ import java.awt.Graphics2D
 import java.awt.RenderingHints
 import java.awt.Cursor
 import java.awt.Dimension
-import java.awt.GridBagConstraints
-import java.awt.GridBagLayout
 import java.util.Locale
-import javax.swing.Box
-import javax.swing.BoxLayout
 import javax.swing.Icon
 import javax.swing.JComponent
 import javax.swing.JPanel
@@ -230,32 +228,30 @@ class MagoStatusBarWidget(private val project: Project) :
 
     private fun detailsPanel(enabled: Set<MagoTool>, value: MagoDiagnosticActivity.Snapshot): PopupView {
         val rows = linkedMapOf<MagoTool, ToolRowView>()
-        val panel = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            border = JBUI.Borders.empty(10, 12)
-            val header = JPanel(BorderLayout()).apply {
-                isOpaque = false
-                val title = JBLabel("Mago").apply { font = JBUI.Fonts.label().deriveFont(Font.BOLD) }
-                add(title, BorderLayout.WEST)
-                add(IconLabelButton(AllIcons.General.Gear, { openPluginSettings() }).apply {
+        val panel = panel {
+            row {
+                cell(JBLabel("Mago").apply { font = JBUI.Fonts.label().deriveFont(Font.BOLD) })
+                    .resizableColumn()
+                cell(IconLabelButton(AllIcons.General.Gear, { this@MagoStatusBarWidget.openPluginSettings() }).apply {
                     toolTipText = "Mago settings"
                     accessibleContext.accessibleName = "Mago settings"
                     cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
-                }, BorderLayout.EAST)
+                })
             }
-            add(header)
-            add(Box.createVerticalStrut(JBUI.scale(8)))
-            add(JSeparator(SwingConstants.HORIZONTAL))
+            row {
+                cell(JSeparator(SwingConstants.HORIZONTAL))
+                    .align(Align.FILL)
+                    .resizableColumn()
+            }
             MagoTool.values().filter { it in enabled }.forEach { tool ->
-                val row = toolRow(tool, aggregateTool(tool, value, System.nanoTime()))
-                rows[tool] = row
-                add(row.component)
+                val view = toolRow(tool, aggregateTool(tool, value, System.nanoTime()))
+                rows[tool] = view
+                row {
+                    cell(view.component).align(Align.FILL).resizableColumn()
+                }
             }
-            val fontMetrics = getFontMetrics(JBUI.Fonts.label())
-            val longestLabel = enabled.maxOfOrNull { tool -> reservedStatusLabelWidth(tool.label, fontMetrics, JBUI.scale(2)) } ?: 0
-            val actionWidth = reservedElapsedColumnWidth(fontMetrics, JBUI.scale(32))
-            preferredSize = Dimension(longestLabel + actionWidth + JBUI.scale(36), preferredSize.height)
         }
+        panel.border = JBUI.Borders.empty(10, 12)
         return PopupView(panel, rows)
     }
 
@@ -288,43 +284,29 @@ class MagoStatusBarWidget(private val project: Project) :
         }
         val statusText = JBLabel("${tool.label} - ${state.status.label}")
         val elapsedText = createElapsedLabel(state.elapsed.orEmpty())
-        val gear = IconLabelButton(AllIcons.General.Gear, { openInspectionSettings(tool) }).apply {
+        val gear = IconLabelButton(AllIcons.General.Gear, { this@MagoStatusBarWidget.openInspectionSettings(tool) }).apply {
             toolTipText = "${tool.label} inspection settings"
             accessibleContext.accessibleName = "${tool.label} inspection settings"
             cursor = Cursor.getPredefinedCursor(Cursor.HAND_CURSOR)
         }
-        val row = JPanel(GridBagLayout()).apply {
-        isOpaque = false
-        name = tool.label
-        border = JBUI.Borders.empty(8, 0, 2, 0)
-        val status = JPanel(BorderLayout(JBUI.scale(6), 0)).apply {
-            isOpaque = false
-            add(dot, BorderLayout.WEST)
-            add(statusText, BorderLayout.CENTER)
+        val statusWidth = reservedStatusLabelWidth(tool.label, statusText.getFontMetrics(statusText.font), JBUI.scale(2))
+        statusText.preferredSize = Dimension(statusWidth, statusText.preferredSize.height)
+        val status = panel {
+            row {
+                cell(dot)
+                cell(statusText).resizableColumn()
+            }
+        }.apply { isOpaque = false }
+        elapsedText.text = state.elapsed.orEmpty()
+        val row = panel {
+            row {
+                cell(status).resizableColumn()
+                cell(elapsedText)
+                cell(gear)
+            }
         }
-        val statusWidth = reservedStatusLabelWidth(tool.label, status.getFontMetrics(statusText.font), JBUI.scale(2))
-        status.preferredSize = Dimension(statusWidth, status.preferredSize.height)
-        add(status, GridBagConstraints().apply {
-            gridx = 0
-            weightx = 1.0
-            fill = GridBagConstraints.HORIZONTAL
-            anchor = GridBagConstraints.WEST
-        })
-        val actions = JPanel().apply {
-            isOpaque = false
-            layout = BoxLayout(this, BoxLayout.X_AXIS)
-            elapsedText.text = state.elapsed.orEmpty()
-            add(elapsedText)
-            add(Box.createHorizontalStrut(JBUI.scale(8)))
-            add(gear)
-        }
-        add(actions, GridBagConstraints().apply {
-            gridx = 1
-            weightx = 0.0
-            fill = GridBagConstraints.NONE
-            anchor = GridBagConstraints.EAST
-        })
-        }
+        row.name = tool.label
+        row.isOpaque = false
         return ToolRowView(row, dot, statusText, elapsedText, gear, state)
     }
 

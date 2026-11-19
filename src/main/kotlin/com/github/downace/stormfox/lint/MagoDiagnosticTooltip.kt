@@ -1,6 +1,5 @@
 package com.github.downace.stormfox.lint
 
-import java.awt.Color
 import java.nio.charset.StandardCharsets
 import java.util.Base64
 import javax.swing.UIManager
@@ -101,27 +100,33 @@ internal object MagoDiagnosticTooltip {
         val description = metadata.description.takeIf(String::isNotBlank)
         if (metadata.name.isBlank() && category == null && level == null && description == null) return ""
 
-        val labelColor = colorHex(uiColor("Label.foreground", Color.BLACK))
         return buildString {
             val name = metadata.name.takeIf(String::isNotBlank)
             if (name != null || category != null || level != null) {
                 append("<hr>")
-                append("<table cellpadding=\"3\" cellspacing=\"2\"><tr>")
-                name?.let {
-                    append("<td><b><font size=\"+1\">${renderText(it)}</font></b></td>")
-                }
-                category?.let { append(chip(it, categoryIcon(it), labelColor)) }
-                level?.let { append(chip("$it (default)", levelIcon(it), labelColor)) }
+                append("<table cellspacing=\"4\" cellpadding=\"3\"><tr>")
+                name?.let { append("<td><b><font size=\"+1\">${renderText(it)}</font></b></td>") }
+                val border = metadataBorderColor()
+                category?.let { appendMetadataLabel(it, categoryIcon(it), border) }
+                level?.let { appendMetadataLabel(it, levelIcon(it), border) }
                 append("</tr></table>")
             }
             description?.let { append("<p>${renderRuleDescription(it)}</p>") }
         }
     }
 
-    private fun chip(label: String, icon: String?, foreground: String): String {
-        val background = colorHex(tint(uiColor("Panel.background", Color.WHITE), uiColor("Label.foreground", Color.BLACK)))
-        val iconMarkup = icon?.let { "<icon src=\"$it\" alt=\"\"/>&nbsp;" }.orEmpty()
-        return "<td bgcolor=\"$background\"><font color=\"$foreground\">$iconMarkup${renderText(label)}</font></td>"
+    private fun StringBuilder.appendMetadataLabel(label: String, icon: String?, border: String) {
+        append("<td style=\"border:1px solid $border\">")
+        icon?.let { append("<icon src=\"$it\" alt=\"\"/> ") }
+        append(renderText(label))
+        append("</td>")
+    }
+
+    private fun metadataBorderColor(): String {
+        val color = UIManager.getColor("Component.borderColor")
+            ?: UIManager.getColor("Separator.foreground")
+            ?: java.awt.Color.GRAY
+        return "#%02x%02x%02x".format(color.red, color.green, color.blue)
     }
 
     private fun categoryIcon(category: String): String? = when (category.filter(Char::isLetterOrDigit).lowercase()) {
@@ -144,16 +149,6 @@ internal object MagoDiagnosticTooltip {
         "note", "information", "info" -> "com.intellij.icons.AllIcons.General.Information"
         else -> null
     }
-
-    private fun uiColor(key: String, fallback: Color): Color = UIManager.getColor(key) ?: fallback
-
-    private fun tint(base: Color, accent: Color): Color = Color(
-        (base.red * 0.86 + accent.red * 0.14).toInt(),
-        (base.green * 0.86 + accent.green * 0.14).toInt(),
-        (base.blue * 0.86 + accent.blue * 0.14).toInt(),
-    )
-
-    private fun colorHex(color: Color): String = "#%02x%02x%02x".format(color.red, color.green, color.blue)
 
     private fun renderRuleDescription(value: String): String =
         Regex("\\*\\*(.+?)\\*\\*").replace(renderText(value)) { "<b>${it.groupValues[1]}</b>" }
