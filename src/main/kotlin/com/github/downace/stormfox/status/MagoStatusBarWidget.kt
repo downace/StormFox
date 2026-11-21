@@ -367,7 +367,7 @@ internal fun statusState(snapshot: MagoDiagnosticActivity.Snapshot): MagoStatusS
     else -> MagoStatusState.IDLE
 }
 internal fun enabledMagoTools(enabledShortNames: Set<String>): Set<MagoTool> =
-    MagoTool.values().filter { it.inspectionShortName in enabledShortNames }.toSet()
+    MagoTool.values().filter { it.shortName in enabledShortNames }.toSet()
 internal fun filteredSnapshot(snapshot: MagoDiagnosticActivity.Snapshot, enabled: Set<MagoTool>) =
     MagoDiagnosticActivity.Snapshot(
         snapshot.queued.filter { it.tool in enabled },
@@ -417,10 +417,4 @@ private val MagoTool.label: String get() = when (this) {
     MagoTool.ANALYZE -> "Analyzer"
     MagoTool.GUARD -> "Guard"
     MagoTool.TWIG_LINT -> "Twig Linter"
-}
-private val MagoTool.inspectionShortName: String get() = when (this) {
-    MagoTool.LINT -> "MagoLint"
-    MagoTool.ANALYZE -> "MagoAnalyze"
-    MagoTool.GUARD -> "MagoGuard"
-    MagoTool.TWIG_LINT -> "MagoTwigLint"
 }

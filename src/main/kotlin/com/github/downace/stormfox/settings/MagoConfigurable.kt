@@ -248,8 +248,6 @@ class MagoConfigurable @JvmOverloads constructor(
 
             val status = StatusLine()
 
-            var checkRunning = false
-
             val rowComponent: JComponent = panel {
                 row {
                     cell(field).align(Align.FILL).resizableColumn()
@@ -272,7 +270,6 @@ class MagoConfigurable @JvmOverloads constructor(
                 val ownPath = field.text.trim()
                 val executionRoot = executionRootField.text.trim()
                 val projectDirectory = project.basePath
-                checkRunning = true
                 validateButton.isEnabled = false
                 status.show(StatusLine.Kind.CHECKING, CHECKING_TEXT)
 
@@ -287,7 +284,6 @@ class MagoConfigurable @JvmOverloads constructor(
                         MagoValidation.Result.Failure(e.message ?: e.toString())
                     }
                 }, update = { result ->
-                    checkRunning = false
                     validateButton.isEnabled = true
                     if (binaryField.text.trim() != binaryPath ||
                         field.text.trim() != ownPath ||
