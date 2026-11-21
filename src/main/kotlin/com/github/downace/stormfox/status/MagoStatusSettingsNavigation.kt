@@ -1,24 +1,20 @@
 package com.github.downace.stormfox.status
 
 import com.github.downace.stormfox.lint.MagoTool
-import com.github.downace.stormfox.settings.MagoConfigurable
+import com.github.downace.stormfox.settings.MagoSettingsNavigation
 import com.intellij.codeInspection.ex.EditInspectionToolsSettingsAction
 import com.intellij.codeInspection.ex.InspectionProfileImpl
-import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.project.Project
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager
 
 internal object MagoStatusSettingsNavigation {
     fun openPlugin(project: Project) {
-        openPlugin(project) { targetProject, configurableClass ->
-            ShowSettingsUtil.getInstance().showSettingsDialog(targetProject, configurableClass)
-        }
+        MagoSettingsNavigation.open(project)
     }
 
     internal fun openPlugin(project: Project, showSettings: (Project, Class<out Configurable>) -> Unit) {
-        // The string overload selects a display name, not a configurable ID.
-        showSettings(project, MagoConfigurable::class.java)
+        MagoSettingsNavigation.open(project, showSettings)
     }
 
     fun openInspection(project: Project, tool: MagoTool) {

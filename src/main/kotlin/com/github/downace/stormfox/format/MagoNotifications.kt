@@ -4,7 +4,7 @@ import com.intellij.notification.Notification
 import com.intellij.notification.NotificationAction
 import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
-import com.intellij.openapi.options.ShowSettingsUtil
+import com.github.downace.stormfox.settings.MagoSettingsNavigation
 import com.intellij.openapi.project.Project
 
 internal const val MAGO_NOTIFICATION_GROUP = "Mago"
@@ -26,6 +26,10 @@ internal const val PHP_LANGUAGE_ID = "PHP"
 private const val MAX_NOTIFICATION_LENGTH = 500
 
 internal fun notifyMagoError(project: Project?, message: String) {
+    createMagoErrorNotification(project, message).notify(project)
+}
+
+internal fun createMagoErrorNotification(project: Project?, message: String): Notification {
     val notification = NotificationGroupManager.getInstance()
         .getNotificationGroup(MAGO_NOTIFICATION_GROUP)
         .createNotification(TOOL_NAME, truncateForNotification(message), NotificationType.ERROR)
@@ -33,12 +37,12 @@ internal fun notifyMagoError(project: Project?, message: String) {
     if (project != null && !project.isDisposed) {
         notification.addAction(
             NotificationAction.createSimple("Open settings") {
-                ShowSettingsUtil.getInstance().showSettingsDialog(project, SETTINGS_CONFIGURABLE_ID)
+                MagoSettingsNavigation.open(project)
             }
         )
     }
 
-    notification.notify(project)
+    return notification
 }
 
 /**
