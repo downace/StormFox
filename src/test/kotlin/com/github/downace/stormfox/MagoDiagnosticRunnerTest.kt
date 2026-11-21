@@ -6,6 +6,30 @@ import junit.framework.TestCase
 import java.io.File
 
 class MagoDiagnosticRunnerTest : TestCase() {
+    fun testArgumentsUseNestedWorkspaceAndProtectPathWithSpaces() {
+        val workingDirectory = File("diagnostic project").absoluteFile.normalize()
+        val workspace = File(workingDirectory, "nested workspace")
+        val path = File(workspace, "-source file.php")
+        assertEquals(
+            listOf("mago", "--config", "/srv/project/config file.toml", "analyze",
+                "--stdin-input", "--reporting-format", "json", "--", "-source file.php"),
+            MagoDiagnosticRunner.arguments("mago", File(workingDirectory, "config file.toml").path,
+                path.path, workingDirectory, MagoTool.ANALYZE, workspace, "/srv/project")
+        )
+    }
+
+    fun testArgumentsRejectPathOutsideMappedRoot() {
+        val workingDirectory = File("diagnostic project").absoluteFile.normalize()
+        val outside = File(workingDirectory.parentFile, "outside.php")
+        try {
+            MagoDiagnosticRunner.arguments("mago", "", outside.path, workingDirectory,
+                MagoTool.LINT, workingDirectory, "/srv/project")
+            fail("Expected an outside mapped root failure")
+        } catch (expected: MagoPathMappingException) {
+            assertTrue(expected.message.orEmpty().contains("outside the mapped project"))
+        }
+    }
+
     fun testBlankSuccessfulReportsRetainWarnings() {
         for (stdout in listOf("", " \r\n\t")) {
             val result = MagoDiagnosticRunner.parseOutput(stdout, "WARN tool warning", 0, "WARN source warning",

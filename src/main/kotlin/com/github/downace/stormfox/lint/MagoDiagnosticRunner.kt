@@ -46,10 +46,19 @@ internal object MagoDiagnosticRunner {
         data class Failure(val message: String, val category: String) : ProcessResult
     }
 
-    fun arguments(binary: String, configPath: String, logicalPath: String, workingDirectory: File, tool: MagoTool = MagoTool.LINT): List<String> {
-        val relativePath = workingDirectory.toPath().toAbsolutePath().normalize()
+    fun arguments(binary: String, configPath: String, logicalPath: String, workingDirectory: File,
+                  tool: MagoTool = MagoTool.LINT, workspace: File = workingDirectory, executionRoot: String = ""): List<String> {
+        val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
+        return arguments(context, globalArguments(context, configPath), logicalPath, workspace, tool)
+    }
+
+    private fun arguments(context: MagoExecutionContext, globals: List<String>, logicalPath: String,
+                          workspace: File, tool: MagoTool): List<String> {
+        // Validate mapped paths even though Mago receives a workspace-relative path.
+        if (context.executionRoot.isNotBlank()) context.toExecution(logicalPath)
+        val relativePath = workspace.toPath().toAbsolutePath().normalize()
             .relativize(File(logicalPath).toPath().toAbsolutePath().normalize()).toString().replace('\\', '/')
-        return globalArguments(MagoExecutionContext(binary, workingDirectory), configPath) + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relativePath)
+        return globals + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relativePath)
     }
 
     private fun globalArguments(context: MagoExecutionContext, configPath: String): List<String> {
@@ -109,10 +118,7 @@ internal object MagoDiagnosticRunner {
             return failed("source", "invalid-report", "Mago returned an invalid source configuration: ${e.message}")
         }
         val arguments = try {
-            if (executionRoot.isNotBlank()) context.toExecution(logicalPath)
-            val relative = workspace.toPath().toAbsolutePath().normalize()
-                .relativize(File(logicalPath).toPath().toAbsolutePath().normalize()).toString().replace('\\', '/')
-            globals + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relative)
+            arguments(context, globals, logicalPath, workspace, tool)
         } catch (e: IllegalArgumentException) {
             log.debug("cannot resolve diagnostic path", e)
             return failed("command", "path", "Cannot resolve Mago ${tool.command} path: ${e.message}")
