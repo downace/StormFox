@@ -5,14 +5,12 @@ import com.github.downace.stormfox.MagoFailureLog
 import com.github.downace.stormfox.MagoFailureLogService
 import com.github.downace.stormfox.MagoVersion
 import com.github.downace.stormfox.format.MagoValidation
-import com.github.downace.stormfox.terminateMagoProcess
+import com.github.downace.stormfox.MagoProcess
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProgressManager
-import com.intellij.util.concurrency.AppExecutorUtil
 import com.google.gson.JsonParser
 import java.io.File
 import java.io.IOException
@@ -177,32 +175,18 @@ internal object MagoDiagnosticRunner {
         } catch (e: IllegalArgumentException) {
             return processFailure("Cannot resolve Mago path: ${e.message}", "path", e)
         }
-        val handler = try {
-            CapturingProcessHandler(command)
-        } catch (e: ExecutionException) {
-            return processFailure("Cannot start Mago: ${e.message}", "start", e)
-        }
-        val writer = AppExecutorUtil.getAppExecutorService().submit {
-            try {
-                handler.processInput.use { it.write(text.toByteArray(StandardCharsets.UTF_8)) }
-            } catch (e: IOException) {
-                log.debug("cannot write diagnostic stdin", e)
-            }
-        }
-        try {
+        return try {
             val indicator = workerIndicator ?: ProgressManager.getInstance().progressIndicator ?: EmptyProgressIndicator()
-            val output = handler.runProcessWithProgressIndicator(indicator, timeoutMillis, true)
-            indicator.checkCanceled()
-            ProgressManager.checkCanceled()
+            val output = MagoProcess.run(command, text, timeoutMillis, checkCanceled = { indicator.checkCanceled(); ProgressManager.checkCanceled() })
             if (log.isDebugEnabled) log.debug("${command.commandLineString}; exit ${output.exitCode}; stdout: ${output.stdout}; stderr: ${output.stderr}")
-            if (output.isTimeout) return processFailure("Mago did not finish within ${timeoutMillis / 1000} seconds", "timeout")
             if (output.exitCode !in validExitCodes) {
                 return processFailure("Mago failed (exit ${output.exitCode}): ${output.stderr.trim().ifEmpty { "No diagnostics returned" }}", "exit-${output.exitCode}")
             }
-            return ProcessResult.Success(output.stdout, output.stderr, output.exitCode)
-        } finally {
-            terminateMagoProcess(handler)
-            writer.cancel(true)
+            ProcessResult.Success(output.stdout, output.stderr, output.exitCode)
+        } catch (e: MagoProcess.TimedOut) {
+            processFailure("Mago did not finish within ${timeoutMillis / 1000} seconds", "timeout")
+        } catch (e: ExecutionException) {
+            processFailure("Cannot start Mago: ${e.message}", "start", e)
         }
     }
 

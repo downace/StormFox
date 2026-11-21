@@ -7,12 +7,8 @@ import com.github.downace.stormfox.MagoVersion
 import com.github.downace.stormfox.MagoVersionListener
 import com.github.downace.stormfox.MagoVersionService
 import com.github.downace.stormfox.settings.MagoSettings
-import com.github.downace.stormfox.terminateMagoProcess
+import com.github.downace.stormfox.MagoProcess
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.OSProcessHandler
-import com.intellij.execution.process.ProcessListener
-import com.intellij.execution.process.ProcessEvent
-import com.intellij.execution.process.ProcessOutputTypes
 import com.intellij.codeInsight.daemon.DaemonCodeAnalyzer
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -29,8 +25,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import java.io.File
 import java.nio.charset.StandardCharsets
-import java.util.concurrent.TimeUnit
-import java.util.concurrent.atomic.AtomicBoolean
 
 internal data class MagoRuleMetadataKey(val command: String, val directory: String, val root: String, val version: MagoVersion?)
 
@@ -152,41 +146,14 @@ internal object MagoRuleMetadataRunner {
             failures.failure(context, "rule-metadata", "load", category, key.directory)
             return null
         }
-        var handler: OSProcessHandler? = null
         try {
             val args = arguments(key)
             if (log.isDebugEnabled) log.debug("Rule metadata command: $args")
-            handler = OSProcessHandler(GeneralCommandLine(args).withWorkDirectory(File(key.directory)).withCharset(StandardCharsets.UTF_8))
-            val stdout = StringBuilder()
-            val stderr = StringBuilder()
-            val exceeded = AtomicBoolean(false)
-            handler.addProcessListener(object : ProcessListener {
-                override fun onTextAvailable(event: ProcessEvent, outputType: com.intellij.openapi.util.Key<*>) {
-                    val target = when (outputType) {
-                        ProcessOutputTypes.STDOUT -> stdout
-                        ProcessOutputTypes.STDERR -> stderr
-                        else -> return
-                    }
-                    synchronized(target) {
-                        if (target.length + event.text.length > LIMIT) exceeded.set(true)
-                        else target.append(event.text)
-                    }
-                }
-            })
-            handler.startNotify()
-            handler.processInput?.close()
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS)
-            while (!handler.waitFor(100)) {
-                indicator.checkCanceled()
-                if (exceeded.get()) return failed("output-limit")
-                if (System.nanoTime() >= deadline) return failed("timeout")
-            }
-            indicator.checkCanceled()
-            if (exceeded.get()) return failed("output-limit")
-            val text = synchronized(stdout) { stdout.toString() }
-            val errors = synchronized(stderr) { stderr.toString() }
-            if (log.isDebugEnabled) log.debug("Rule metadata exit ${handler.exitCode}; stdout: $text; stderr: $errors")
-            if (handler.exitCode != 0) return failed("exit")
+            val command = GeneralCommandLine(args).withWorkDirectory(File(key.directory)).withCharset(StandardCharsets.UTF_8)
+            val output = MagoProcess.run(command, null, (TIMEOUT_SECONDS * 1000).toInt(), LIMIT, checkCanceled = indicator::checkCanceled)
+            val text = output.stdout
+            if (log.isDebugEnabled) log.debug("Rule metadata exit ${output.exitCode}; stdout: $text; stderr: ${output.stderr}")
+            if (output.exitCode != 0) return failed("exit")
             val parsed = try { MagoRuleMetadataParser.parse(text) }
             catch (e: RuntimeException) {
                 log.debug("Invalid rule metadata JSON", e)
@@ -196,17 +163,15 @@ internal object MagoRuleMetadataRunner {
             return parsed
         } catch (e: ProcessCanceledException) {
             throw e
-        } catch (e: InterruptedException) {
-            Thread.currentThread().interrupt()
-            throw ProcessCanceledException()
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: MagoProcess.OutputLimit) {
+            return failed("output-limit")
+        } catch (e: MagoProcess.TimedOut) {
+            return failed("timeout")
         } catch (e: Exception) {
             log.debug("Rule metadata process failed", e)
             return failed("process")
-        } finally {
-            handler?.let {
-                try { terminateMagoProcess(it) }
-                catch (e: Exception) { log.debug("Could not terminate rule metadata process", e) }
-            }
         }
     }
 }

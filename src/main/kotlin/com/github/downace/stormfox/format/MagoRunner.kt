@@ -4,16 +4,14 @@ import com.github.downace.stormfox.MagoExecutionContext
 import com.github.downace.stormfox.MagoFailureLog
 import com.github.downace.stormfox.MagoFailureLogService
 import com.github.downace.stormfox.MagoVersion
+import com.github.downace.stormfox.MagoProcess
 import com.github.downace.stormfox.terminateMagoProcess
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.progress.ProcessCanceledException
-import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CancellationException
 import com.intellij.openapi.diagnostic.Logger
 import java.io.File
-import java.io.IOException
 import java.nio.charset.StandardCharsets
 
 internal object MagoRunner {
@@ -31,17 +29,14 @@ internal object MagoRunner {
         @Synchronized
         fun cancel() {
             cancelled = true
-            process?.let {
-                it.descendants().use { children -> children.forEach { child -> child.destroyForcibly() } }
-                it.destroyForcibly()
-            }
+            process?.let(::terminateMagoProcess)
         }
 
         @Synchronized
         fun attach(process: Process) {
             this.process = process
             if (cancelled) {
-                process.destroyForcibly()
+                terminateMagoProcess(process)
                 throw ProcessCanceledException()
             }
         }
@@ -112,51 +107,25 @@ internal object MagoRunner {
             commandLine.withWorkDirectory(workingDirectory)
         }
 
-        val handler = try {
-            CapturingProcessHandler(commandLine)
-        } catch (e: ExecutionException) {
-            LOG.debug("formatter start failed", e)
-            return failed("process", "start", "Cannot start mago: ${e.message}")
-        }
-
-        var writer: java.util.concurrent.Future<*>? = null
         return try {
-            cancellation.attach(handler.process)
-            // Feed stdin concurrently with output collection so neither pipe can block the other.
-            writer = AppExecutorUtil.getAppExecutorService().submit { writeStdin(handler, text) }
-
             val started = System.currentTimeMillis()
-            val output = handler.runProcess(TIMEOUT_MS, true)
-            cancellation.checkCanceled()
-            val duration = System.currentTimeMillis() - started
-
-            if (LOG.isDebugEnabled) LOG.debug(
-                "format finished in ${duration}ms, exit code ${output.exitCode}, command: ${commandLine.commandLineString}",
-            )
-            if (LOG.isDebugEnabled && output.stdout.isNotBlank()) {
-                LOG.debug("stdout: ${output.stdout}")
-            }
-            if (LOG.isDebugEnabled && output.stderr.isNotBlank()) {
-                LOG.debug("stderr: ${output.stderr}")
-            }
-
+            val output = MagoProcess.run(commandLine, text, TIMEOUT_MS, checkCanceled = cancellation::checkCanceled, attach = cancellation::attach)
+            if (LOG.isDebugEnabled) LOG.debug("format finished in ${System.currentTimeMillis() - started}ms, exit code ${output.exitCode}, command: ${commandLine.commandLineString}; stdout: ${output.stdout}; stderr: ${output.stderr}")
             when {
-                output.isTimeout -> failed("process", "timeout", "mago did not finish within ${TIMEOUT_MS / 1000} seconds")
                 output.exitCode != 0 -> failed("process", "exit-${output.exitCode}", errorMessage(output.stderr, output.exitCode))
-                text.isNotEmpty() && output.stdout.isBlank() ->
-                    failed("process", "empty-output", "mago returned no formatted content for non-empty input; verify stdin forwarding (for docker run, use -i). The original text was preserved.")
+                text.isNotEmpty() && output.stdout.isBlank() -> failed("process", "empty-output", "mago returned no formatted content for non-empty input; verify stdin forwarding (for docker run, use -i). The original text was preserved.")
                 else -> { log.success(key, "format", "process"); Result.Success(output.stdout) }
             }
-        } catch (e: ProcessCanceledException) {
-            throw e
-        } catch (e: CancellationException) {
-            throw e
+        } catch (e: ProcessCanceledException) { throw e
+        } catch (e: CancellationException) { throw e
+        } catch (e: MagoProcess.TimedOut) {
+            failed("process", "timeout", "mago did not finish within ${TIMEOUT_MS / 1000} seconds")
+        } catch (e: ExecutionException) {
+            LOG.debug("formatter start failed", e)
+            failed("process", "start", "Cannot start mago: ${e.message}")
         } catch (e: Exception) {
             LOG.debug("formatter execution failed", e)
             failed("process", "exception", "mago failed: ${e.message ?: e.toString()}")
-        } finally {
-            terminateMagoProcess(handler)
-            writer?.cancel(true)
         }
     }
 
@@ -169,32 +138,23 @@ internal object MagoRunner {
         cancellation.checkCanceled()
         val commandLine = GeneralCommandLine(context.command() + "--version").withCharset(StandardCharsets.UTF_8)
         if (directory != null) commandLine.withWorkDirectory(directory)
-        val handler = try {
-            CapturingProcessHandler(commandLine)
-        } catch (e: ExecutionException) {
-            return VersionResult.Failure("Cannot start mago: ${e.message}", "start")
-        }
         return try {
-            cancellation.attach(handler.process)
-            handler.processInput.close()
-            val output = handler.runProcess(TIMEOUT_MS, true)
-            cancellation.checkCanceled()
+            val output = MagoProcess.run(commandLine, null, TIMEOUT_MS, checkCanceled = cancellation::checkCanceled, attach = cancellation::attach)
             if (LOG.isDebugEnabled) LOG.debug("formatter version command=${commandLine.commandLineString}; exit=${output.exitCode}; stdout=${output.stdout}; stderr=${output.stderr}")
             when {
-                output.isTimeout -> VersionResult.Failure("mago did not finish within ${TIMEOUT_MS / 1000} seconds", "timeout")
                 output.exitCode != 0 -> VersionResult.Failure(errorMessage(output.stderr, output.exitCode), "exit-${output.exitCode}")
                 else -> MagoVersion.parse(output.stdout + "\n" + output.stderr)?.let { VersionResult.Known(it) }
                     ?: VersionResult.Failure("Cannot determine Mago version from --version output", "unrecognized-output")
             }
-        } catch (e: ProcessCanceledException) {
-            throw e
-        } catch (e: CancellationException) {
-            throw e
+        } catch (e: ProcessCanceledException) { throw e
+        } catch (e: CancellationException) { throw e
+        } catch (e: MagoProcess.TimedOut) {
+            VersionResult.Failure("mago did not finish within ${TIMEOUT_MS / 1000} seconds", "timeout")
+        } catch (e: ExecutionException) {
+            VersionResult.Failure("Cannot start mago: ${e.message}", "start")
         } catch (e: Exception) {
             LOG.debug("formatter version probe failed", e)
             VersionResult.Failure("mago failed: ${e.message ?: e.toString()}", "exception")
-        } finally {
-            terminateMagoProcess(handler)
         }
     }
 
@@ -210,21 +170,6 @@ internal object MagoRunner {
             arguments += listOf("--stdin-filepath", context.toExecution(logicalPath))
         }
         return context.command() + arguments
-    }
-
-    /**
-     * Writing to stdin fails when mago has already exited, which is exactly what happens with an invalid
-     * configuration. Its diagnostics on stderr are more useful than that exception, so the failure is
-     * only logged and the process output is still collected.
-     */
-    private fun writeStdin(handler: CapturingProcessHandler, text: String) {
-        try {
-            handler.processInput.write(text.toByteArray(StandardCharsets.UTF_8))
-            handler.processInput.flush()
-            handler.processInput.close()
-        } catch (e: IOException) {
-            LOG.debug("cannot write stdin, the process probably exited already", e)
-        }
     }
 
     private fun errorMessage(stderr: String, exitCode: Int): String {

@@ -3,12 +3,11 @@ package com.github.downace.stormfox.format
 import com.github.downace.stormfox.MagoExecutionContext
 import com.github.downace.stormfox.MagoFailureLog
 import com.github.downace.stormfox.MagoFailureLogService
-import com.github.downace.stormfox.terminateMagoProcess
+import com.github.downace.stormfox.MagoProcess
 import com.github.downace.stormfox.MagoVersion
 import com.github.downace.stormfox.MagoVersionService
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -106,43 +105,27 @@ internal object MagoValidation {
         val commandLine = GeneralCommandLine(arguments).withCharset(StandardCharsets.UTF_8)
         if (workingDirectory != null) commandLine.withWorkDirectory(workingDirectory)
 
-        val handler = try {
-            CapturingProcessHandler(commandLine)
-        } catch (e: ExecutionException) {
-            failures.debug { "validation start failed: ${e.message}" }
-            return failed("start", "Cannot start mago: ${e.message}")
-        }
-
         return try {
-            // Validation commands never send input; wrappers may wait for EOF before exiting.
-            handler.processInput.close()
             val indicator = ProgressManager.getInstance().progressIndicator ?: EmptyProgressIndicator()
-            indicator.checkCanceled()
-            val output = handler.runProcessWithProgressIndicator(indicator, TIMEOUT_MS, true)
-            indicator.checkCanceled()
+            val output = MagoProcess.run(commandLine, null, TIMEOUT_MS, checkCanceled = { indicator.checkCanceled(); ProgressManager.checkCanceled() })
             failures.debug { "validation command=${commandLine.commandLineString}; exit=${output.exitCode}; stdout=${output.stdout}; stderr=${output.stderr}" }
-            if (output.isTimeout) {
-                return failed("timeout", "mago did not answer within ${TIMEOUT_MS / 1000} seconds")
-            }
             if (output.exitCode != 0) {
                 val message = output.stderr.trim().ifEmpty { output.stdout.trim() }
                 return failed("exit-${output.exitCode}", message.ifEmpty { "mago exited with code ${output.exitCode}" })
             }
-            // Some Mago builds emit informational output (including --version) on stderr.
-            val message = listOf(output.stdout.trim(), output.stderr.trim())
-                .filter(String::isNotEmpty)
-                .joinToString("\n")
+            val message = listOf(output.stdout.trim(), output.stderr.trim()).filter(String::isNotEmpty).joinToString("\n")
             if (recover) failures.success(key, "validation", stage)
-            return Result.Success(message)
-        } catch (e: ProcessCanceledException) {
-            throw e
-        } catch (e: CancellationException) {
-            throw e
+            Result.Success(message)
+        } catch (e: ProcessCanceledException) { throw e
+        } catch (e: CancellationException) { throw e
+        } catch (e: MagoProcess.TimedOut) {
+            failed("timeout", "mago did not answer within ${TIMEOUT_MS / 1000} seconds")
+        } catch (e: ExecutionException) {
+            failures.debug { "validation start failed: ${e.message}" }
+            failed("start", "Cannot start mago: ${e.message}")
         } catch (e: Exception) {
             LOG.debug("validation execution failed", e)
-            return failed("exception", e.message ?: e.toString())
-        } finally {
-            terminateMagoProcess(handler)
+            failed("exception", e.message ?: e.toString())
         }
     }
 
