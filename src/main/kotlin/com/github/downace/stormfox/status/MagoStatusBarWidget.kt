@@ -189,7 +189,7 @@ class MagoStatusBarWidget(private val project: Project) :
         return popup
     }
 
-    private data class PopupView(val panel: JPanel, var rows: Map<MagoTool, ToolRowView>)
+    private data class PopupView(val panel: JPanel, val rows: Map<MagoTool, ToolRowView>)
     private val popupPanel = mutableMapOf<JBPopup, PopupView>()
     private val popupTimers = mutableMapOf<JBPopup, Timer>()
 
@@ -198,20 +198,15 @@ class MagoStatusBarWidget(private val project: Project) :
         val view = popupPanel[popup] ?: return
         val latestEnabled = enabledToolsCache
         if (latestEnabled != view.rows.keys) {
-            val replacement = detailsPanel(latestEnabled, filteredSnapshot(activity.snapshot(), latestEnabled))
-            // Profile changes may alter the fixed set (at most three); elapsed ticks never rebuild.
-            view.panel.removeAll()
-            replacement.panel.components.forEach(view.panel::add)
-            view.rows = replacement.rows
-            view.panel.revalidate()
-            view.panel.repaint()
-        } else {
-            val value = filteredSnapshot(activity.snapshot(), latestEnabled)
-            view.rows.forEach { (tool, row) ->
-                val state = aggregateTool(tool, value, System.nanoTime())
-                if (!elapsedOnly || row.state != state.copy(elapsed = row.state.elapsed)) row.update(state)
-                else row.updateElapsed(state.elapsed)
-            }
+            // DSL components carry layout constraints that cannot be preserved by reparenting them.
+            popup.cancel()
+            return
+        }
+        val value = filteredSnapshot(activity.snapshot(), latestEnabled)
+        view.rows.forEach { (tool, row) ->
+            val state = aggregateTool(tool, value, System.nanoTime())
+            if (!elapsedOnly || row.state != state.copy(elapsed = row.state.elapsed)) row.update(state)
+            else row.updateElapsed(state.elapsed)
         }
         popupTimers[popup]?.let { timer ->
             val current = filteredSnapshot(activity.snapshot(), latestEnabled)

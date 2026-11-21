@@ -143,6 +143,41 @@ class MagoStatusPresentationTest {
 }
 
 class MagoStatusPopupGeometryTest : BasePlatformTestCase() {
+    fun testPopupClosesWhenEnabledToolsChange() {
+        val widget = MagoStatusBarWidget(project)
+        com.intellij.openapi.util.Disposer.register(testRootDisposable, widget)
+        val createPanel = MagoStatusBarWidget::class.java.getDeclaredMethod(
+            "detailsPanel", Set::class.java, MagoDiagnosticActivity.Snapshot::class.java,
+        ).apply { isAccessible = true }
+        val view = createPanel.invoke(
+            widget, MagoTool.entries.toSet(),
+            MagoDiagnosticActivity.Snapshot(emptyList(), emptyList(), emptyList()),
+        )
+        var cancelled = false
+        val popup = java.lang.reflect.Proxy.newProxyInstance(
+            com.intellij.openapi.ui.popup.JBPopup::class.java.classLoader,
+            arrayOf(com.intellij.openapi.ui.popup.JBPopup::class.java),
+        ) { proxy, method, args ->
+            when (method.name) {
+                "isDisposed" -> false
+                "cancel" -> { cancelled = true; null }
+                "hashCode" -> System.identityHashCode(proxy)
+                "equals" -> proxy === args?.get(0)
+                else -> error("Unexpected popup call: ${method.name}")
+            }
+        } as com.intellij.openapi.ui.popup.JBPopup
+        fun widgetField(name: String) = MagoStatusBarWidget::class.java.getDeclaredField(name).apply { isAccessible = true }
+        widgetField("activePopup").set(widget, popup)
+        widgetField("enabledToolsCache").set(widget, setOf(MagoTool.entries.first()))
+        @Suppress("UNCHECKED_CAST")
+        val panels = widgetField("popupPanel").get(widget) as MutableMap<Any, Any>
+        panels[popup] = view
+        MagoStatusBarWidget::class.java.getDeclaredMethod(
+            "updatePopup", com.intellij.openapi.ui.popup.JBPopup::class.java, Boolean::class.javaPrimitiveType,
+        ).apply { isAccessible = true }.invoke(widget, popup, false)
+        assertTrue("Changing enabled tools should close the popup", cancelled)
+    }
+
     fun testPopupDslRowsFitAndReserveIdleElapsedGeometry() {
         val widget = MagoStatusBarWidget(project)
         com.intellij.openapi.util.Disposer.register(testRootDisposable, widget)
