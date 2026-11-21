@@ -9,6 +9,8 @@ import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.profile.ProfileChangeAdapter
+import com.intellij.psi.PsiManager
 import com.intellij.ui.EditorNotificationPanel
 import com.intellij.ui.EditorNotificationProvider
 import java.util.concurrent.atomic.AtomicBoolean
@@ -21,8 +23,10 @@ class MagoDiagnosticEditorNotificationProvider : EditorNotificationProvider {
         file: VirtualFile,
     ): Function<in FileEditor, out JComponent?>? {
         if (!file.isInLocalFileSystem) return null
+        val psiFile = PsiManager.getInstance(project).findFile(file) ?: return null
         val failures = project.getService(MagoDiagnosticEditorNotificationService::class.java)
             .failures(file.path)
+            .filter { MagoDiagnosticAnnotator.inspection(psiFile, it.tool) != null }
         if (failures.isEmpty()) return null
 
         val message = failures.joinToString("  ·  ") { "${it.tool.displayName}: ${it.error}" }
@@ -45,17 +49,27 @@ internal class MagoDiagnosticEditorNotificationService(
 
     init {
         val activity = project.getService(MagoDiagnosticService::class.java).activity
-        activity.addListener(this) {
-            if (refreshQueued.compareAndSet(false, true)) {
-                ApplicationManager.getApplication().invokeLater({
-                    refreshQueued.set(false)
-                    if (project.isDisposed) return@invokeLater
-                    val notifications = com.intellij.ui.EditorNotifications.getInstance(project)
-                    project.getService(FileEditorManager::class.java).openFiles
-                        .filter { it.isValid && it.isInLocalFileSystem }
-                        .forEach(notifications::updateNotifications)
-                }, ModalityState.any())
-            }
+        activity.addListener(this) { refreshLater() }
+        project.messageBus.connect(this).subscribe(ProfileChangeAdapter.TOPIC, object : ProfileChangeAdapter {
+            override fun profileChanged(profile: com.intellij.codeInspection.InspectionProfile) = refreshLater()
+            override fun profileActivated(
+                oldProfile: com.intellij.codeInspection.InspectionProfile?,
+                profile: com.intellij.codeInspection.InspectionProfile?,
+            ) = refreshLater()
+            override fun profilesInitialized() = refreshLater()
+        })
+    }
+
+    private fun refreshLater() {
+        if (refreshQueued.compareAndSet(false, true)) {
+            ApplicationManager.getApplication().invokeLater({
+                refreshQueued.set(false)
+                if (project.isDisposed) return@invokeLater
+                val notifications = com.intellij.ui.EditorNotifications.getInstance(project)
+                project.getService(FileEditorManager::class.java).openFiles
+                    .filter { it.isValid && it.isInLocalFileSystem }
+                    .forEach(notifications::updateNotifications)
+            }, ModalityState.any())
         }
     }
 
