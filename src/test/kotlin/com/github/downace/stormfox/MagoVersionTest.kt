@@ -8,11 +8,162 @@ import com.intellij.openapi.application.ApplicationManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.CoroutineExceptionHandler
+import kotlinx.coroutines.CancellationException
 import java.nio.file.Files
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicLong
 
 class MagoVersionTest : BasePlatformTestCase() {
+    fun testAbandonedManualValidationRespectsCooldownAndStaleTokens() {
+        val state = MagoSettings.getInstance(project).state
+        val oldPath = state.magoPath
+        val oldRoot = state.executionRoot
+        val job = SupervisorJob()
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
+        val clock = AtomicLong()
+        val calls = AtomicInteger()
+        val finished = CountDownLatch(1)
+        try {
+            state.magoPath = "mago"
+            state.executionRoot = ""
+            service.nanoTimeForTest = { clock.get() }
+            service.probeForTest = { _, _, _ ->
+                calls.incrementAndGet()
+                MagoValidation.Result.Success("mago 1.60.1")
+            }
+            service.probeFinishedForTest = { finished.countDown() }
+            val old = service.beginValidation("mago", null, "")
+            service.abandonValidation(old, "mago", null, "")
+            service.ensureInitialized()
+            assertEquals(0, calls.get())
+            // Manual validation bypasses cooldown; an older cleanup must not release it.
+            val current = service.beginValidation("mago", null, "")
+            service.abandonValidation(old, "mago", null, "")
+            clock.set(MagoVersionService.RETRY_COOLDOWN_NANOS)
+            service.ensureInitialized()
+            assertEquals(0, calls.get())
+            service.abandonValidation(current, "mago", null, "")
+            service.finish(current, "mago", MagoValidation.Result.Failure("late"), null, "")
+            clock.addAndGet(MagoVersionService.RETRY_COOLDOWN_NANOS)
+            service.ensureInitialized()
+            assertTrue(finished.await(5, TimeUnit.SECONDS))
+            assertEquals(1, calls.get())
+            assertEquals(MagoVersion(1, 60, 1), service.cachedVersion())
+            service.finish(current, "mago", MagoValidation.Result.Success("mago 1.59.0"), null, "")
+            assertEquals(MagoVersion(1, 60, 1), service.cachedVersion())
+        } finally {
+            job.cancel()
+            state.magoPath = oldPath
+            state.executionRoot = oldRoot
+        }
+    }
+
+    fun testCancelledAndExceptionalProbesReleasePendingForRetry() {
+        val state = MagoSettings.getInstance(project).state
+        val oldPath = state.magoPath
+        val oldRoot = state.executionRoot
+        try {
+            state.magoPath = "mago"
+            state.executionRoot = ""
+            for (cancel in listOf(true, false)) {
+                val job = SupervisorJob()
+                val service = MagoVersionService(
+                    project, CoroutineScope(Dispatchers.Default + job + CoroutineExceptionHandler { _, _ -> }),
+                )
+                val clock = AtomicLong()
+                val calls = AtomicInteger()
+                val failed = CountDownLatch(1)
+                val recovered = CountDownLatch(1)
+                try {
+                    service.nanoTimeForTest = { clock.get() }
+                    service.probeFinishedForTest = {
+                        if (calls.get() == 1) failed.countDown() else recovered.countDown()
+                    }
+                    service.probeForTest = { _, _, _ ->
+                        if (calls.incrementAndGet() == 1) {
+                            if (cancel) throw CancellationException("cancelled")
+                            throw IllegalStateException("probe failed")
+                        }
+                        MagoValidation.Result.Success("mago 1.59.0")
+                    }
+                    service.ensureInitialized()
+                    assertTrue(failed.await(5, TimeUnit.SECONDS))
+                    service.ensureInitialized()
+                    assertEquals(1, calls.get())
+                    clock.set(MagoVersionService.RETRY_COOLDOWN_NANOS)
+                    service.ensureInitialized()
+                    assertTrue(recovered.await(5, TimeUnit.SECONDS))
+                    assertEquals(MagoVersion(1, 59, 0), service.cachedVersion())
+                    clock.addAndGet(MagoVersionService.RETRY_COOLDOWN_NANOS)
+                    service.ensureInitialized()
+                    assertEquals(2, calls.get())
+                } finally {
+                    job.cancel()
+                }
+            }
+        } finally {
+            state.magoPath = oldPath
+            state.executionRoot = oldRoot
+        }
+    }
+
+    fun testFailedProbeRetriesOnDemandAfterCooldownAndCoalescesConcurrentCalls() {
+        val state = MagoSettings.getInstance(project).state
+        val oldPath = state.magoPath
+        val oldRoot = state.executionRoot
+        val job = SupervisorJob()
+        val service = MagoVersionService(project, CoroutineScope(Dispatchers.Default + job))
+        val clock = AtomicLong(0)
+        val calls = AtomicInteger()
+        val firstFinished = CountDownLatch(1)
+        val retryStarted = CountDownLatch(1)
+        val releaseRetry = CountDownLatch(1)
+        val retryFinished = CountDownLatch(1)
+        try {
+            state.magoPath = "mago"
+            state.executionRoot = ""
+            service.nanoTimeForTest = { clock.get() }
+            service.probeFinishedForTest = {
+                if (calls.get() == 1) firstFinished.countDown() else retryFinished.countDown()
+            }
+            service.probeForTest = { _, _, _ ->
+                if (calls.incrementAndGet() == 1) {
+                    MagoValidation.Result.Failure("unavailable")
+                } else {
+                    retryStarted.countDown()
+                    check(releaseRetry.await(5, TimeUnit.SECONDS))
+                    MagoValidation.Result.Success("mago 1.60.1")
+                }
+            }
+            service.ensureInitialized()
+            assertTrue(firstFinished.await(5, TimeUnit.SECONDS))
+            assertNull(service.cachedVersion())
+            clock.set(MagoVersionService.RETRY_COOLDOWN_NANOS - 1)
+            service.ensureInitialized()
+            assertEquals(1, calls.get())
+            clock.incrementAndGet()
+            val threads = List(12) { Thread { service.ensureInitialized() } }
+            threads.forEach { it.start() }
+            threads.forEach { it.join() }
+            assertTrue(retryStarted.await(5, TimeUnit.SECONDS))
+            assertEquals(2, calls.get())
+            releaseRetry.countDown()
+            assertTrue(retryFinished.await(5, TimeUnit.SECONDS))
+            assertEquals(MagoVersion(1, 60, 1), service.cachedVersion())
+            clock.addAndGet(MagoVersionService.RETRY_COOLDOWN_NANOS)
+            service.ensureInitialized()
+            assertEquals(2, calls.get())
+        } finally {
+            releaseRetry.countDown()
+            job.cancel()
+            state.magoPath = oldPath
+            state.executionRoot = oldRoot
+        }
+    }
+
     fun testBlankDiagnosticCommandSharesDefaultMagoVersionContext() {
         val settings = MagoSettings.getInstance(project).state
         val previous = settings.magoPath

@@ -18,7 +18,12 @@ import java.io.File
 @Service(Service.Level.PROJECT)
 internal class MagoVersionService(private val project: Project, private val scope: CoroutineScope) {
     private data class Key(val command: String, val directory: String?, val root: String)
-    private data class Entry(val token: Long, var version: MagoVersion? = null)
+    private data class Entry(
+        val token: Long,
+        var version: MagoVersion? = null,
+        var failedAtNanos: Long? = null,
+        var pending: Boolean = true,
+    )
     private val entries = LinkedHashMap<Key, Entry>(16, 0.75f, true)
     private var generation = 0L
     private var pendingRefresh: Job? = null
@@ -31,6 +36,12 @@ internal class MagoVersionService(private val project: Project, private val scop
     internal var acceptedVersionForTest: ((MagoVersion) -> Unit)? = null
     @org.jetbrains.annotations.TestOnly
     internal var failureLogForTest: MagoFailureLog? = null
+    @org.jetbrains.annotations.TestOnly
+    internal var nanoTimeForTest: (() -> Long)? = null
+    @org.jetbrains.annotations.TestOnly
+    internal var probeFinishedForTest: (() -> Unit)? = null
+
+    private fun nanoTime() = nanoTimeForTest?.invoke() ?: System.nanoTime()
 
     private fun key(command: String, directory: File?, root: String) =
         Key(command.trim().ifBlank { "mago" }, directory?.toPath()?.toAbsolutePath()?.normalize()?.toString(), root.trim())
@@ -74,19 +85,34 @@ internal class MagoVersionService(private val project: Project, private val scop
     private fun launchRefresh(command: String, directory: File?, root: String, token: Long) {
         if (command.isBlank() || directory == null && !safeWithoutProject(command, root)) return
         scope.launch(Dispatchers.IO) {
-            if (directory != null && !directory.isDirectory) return@launch
+            if (directory != null && !directory.isDirectory) {
+                finish(token, command, MagoValidation.Result.Failure("Working directory is unavailable"), directory, root)
+                return@launch
+            }
             LOG.debug("Starting version probe")
             val result = probeForTest?.invoke(command, directory, root)
                 ?: MagoValidation.checkBinaryUncached(command, directory, root)
             if (LOG.isDebugEnabled) LOG.debug("Version probe completed: $result")
             finish(token, command, result, directory, root)
+        }.invokeOnCompletion {
+            // Also runs when the scope was cancelled before the coroutine could start.
+            abandonValidation(token, command, directory, root)
+            probeFinishedForTest?.invoke()
         }
     }
 
     fun ensureInitialized(directory: File? = null) {
         val context = current(directory)
+        // Do not create an in-flight entry for work that cannot be launched.
+        if (directory != null && !directory.isDirectory ||
+            directory == null && !safeWithoutProject(context.command, context.root)) return
         val token = synchronized(this) {
-            if (entries.containsKey(context)) return
+            val entry = entries[context]
+            if (entry != null) {
+                if (entry.pending || entry.version != null) return
+                val failedAt = entry.failedAtNanos ?: return
+                if (nanoTime() - failedAt < RETRY_COOLDOWN_NANOS) return
+            }
             beginLocked(context)
         }
         launchRefresh(context.command, directory, context.root, token)
@@ -97,6 +123,17 @@ internal class MagoVersionService(private val project: Project, private val scop
         val settingsContext = current(directory)
         return synchronized(this) {
             if (context != settingsContext) null else beginLocked(context)
+        }
+    }
+
+    fun abandonValidation(token: Long?, binaryPath: String, directory: File?, executionRoot: String) {
+        val context = key(binaryPath, directory, executionRoot)
+        synchronized(this) {
+            val entry = entries[context]
+            if (token != null && entry?.token == token && entry.pending) {
+                entry.pending = false
+                entry.failedAtNanos = nanoTime()
+            }
         }
     }
 
@@ -116,11 +153,13 @@ internal class MagoVersionService(private val project: Project, private val scop
         val settingsContext = current(directory)
         val changed = synchronized(this) {
             val entry = entries[context]
-            if (token == null || entry?.token != token || context != settingsContext) {
+            if (token == null || entry?.token != token || !entry.pending || context != settingsContext) {
                 LOG.debug("Discarding stale version probe result")
                 return
             }
             val next = (result as? MagoValidation.Result.Success)?.let { MagoVersion.parse(it.message) }
+            entry.pending = false
+            entry.failedAtNanos = if (next == null) nanoTime() else null
             if (next != null) {
                 val failureContext = MagoFailureLog.context(
                     binaryPath.trim(), directory?.absoluteFile?.normalize()?.path.orEmpty(), executionRoot,
@@ -145,6 +184,8 @@ internal class MagoVersionService(private val project: Project, private val scop
 
     companion object {
         private val LOG = Logger.getInstance(MagoVersionService::class.java)
+        // Retried only on demand, never by a timer; monotonic time tolerates wall-clock changes.
+        internal const val RETRY_COOLDOWN_NANOS = 30_000_000_000L
         private fun safeWithoutProject(command: String, root: String): Boolean {
             if (root.isNotBlank()) return false
             val value = command.trim()

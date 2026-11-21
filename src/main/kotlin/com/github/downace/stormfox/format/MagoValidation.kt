@@ -32,9 +32,14 @@ internal object MagoValidation {
     fun checkBinary(binaryPath: String, projectDirectory: File? = null, executionRoot: String = "", project: Project? = null): Result {
         val service = project?.let { MagoVersionService.getInstance(it) }
         val token = service?.beginValidation(binaryPath, projectDirectory, executionRoot)
-        val result = checkBinaryUncached(binaryPath, projectDirectory, executionRoot)
-        service?.finish(token, binaryPath, result, projectDirectory, executionRoot)
-        return result
+        try {
+            val result = checkBinaryUncached(binaryPath, projectDirectory, executionRoot)
+            service?.finish(token, binaryPath, result, projectDirectory, executionRoot)
+            return result
+        } finally {
+            // A cancelled or throwing validation has no result to finish; never strand its token.
+            service?.abandonValidation(token, binaryPath, projectDirectory, executionRoot)
+        }
     }
 
     internal fun checkBinaryUncached(binaryPath: String, projectDirectory: File? = null, executionRoot: String = "",
