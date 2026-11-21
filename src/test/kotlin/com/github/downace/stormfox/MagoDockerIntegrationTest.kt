@@ -5,12 +5,15 @@ import com.github.downace.stormfox.format.MagoValidation
 import com.github.downace.stormfox.lint.MagoDiagnosticRunner
 import com.github.downace.stormfox.settings.MagoSettings
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import org.junit.Assume.assumeTrue
+import org.junit.runner.RunWith
 import java.nio.file.Files
 
 /** Opt in with STORMFOX_TEST_DOCKER=1; requires the local 1.60.1 image and a running daemon. */
+@RunWith(AssumptionAwarePlatformTestRunner::class)
 class MagoDockerIntegrationTest : BasePlatformTestCase() {
     fun testProductionRunnersAgainstDocker() {
-        if (System.getenv("STORMFOX_TEST_DOCKER") != "1") return
+        assumeTrue("STORMFOX_TEST_DOCKER is not 1", System.getenv("STORMFOX_TEST_DOCKER") == "1")
         val root = Files.createTempDirectory("stormfox docker ").toFile()
         val source = root.resolve("src/Test.php").apply { parentFile.mkdirs(); writeText("<?php echo 'disk';\n") }
         val prefix = "docker run --rm -i -v .:/app -w /app ghcr.io/carthage-software/mago:1.60.1"

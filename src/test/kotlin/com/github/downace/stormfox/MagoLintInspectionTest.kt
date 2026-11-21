@@ -17,11 +17,14 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager
+import org.junit.AssumptionViolatedException
+import org.junit.runner.RunWith
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
 import java.lang.reflect.Proxy
 import java.nio.file.Files
 
+@RunWith(AssumptionAwarePlatformTestRunner::class)
 class MagoLintInspectionTest : BasePlatformTestCase() {
     fun testRetainedAnnotationsHaveNoActions() {
         val text = "<?php echo 1;"
@@ -269,7 +272,7 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
     }
 
     fun testOptionalCliReadsSnapshotInsteadOfDisk() {
-        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
+        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: throw AssumptionViolatedException("STORMFOX_MAGO_TEST_BINARY is not set")
         val directory = Files.createTempDirectory("stormfox-lint-cli-")
         val sourceDirectory = Files.createDirectory(directory.resolve("src"))
         val path = sourceDirectory.resolve("-Snapshot.php")

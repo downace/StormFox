@@ -4,13 +4,16 @@ import com.github.downace.stormfox.lint.MagoDiagnosticRunner
 import com.github.downace.stormfox.lint.MagoTool
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
+import org.junit.AssumptionViolatedException
+import org.junit.runner.RunWith
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.nio.file.Files
 import java.nio.charset.StandardCharsets
 
+@RunWith(AssumptionAwarePlatformTestRunner::class)
 class MagoDiagnosticCompatibilityTest : BasePlatformTestCase() {
     fun testOptionalTwigCliUsesStdinAndSourceWorkspace() {
-        val binary = System.getenv("STORMFOX_MAGO_TWIG_TEST_BINARY") ?: return
+        val binary = System.getenv("STORMFOX_MAGO_TWIG_TEST_BINARY") ?: throw AssumptionViolatedException("STORMFOX_MAGO_TWIG_TEST_BINARY is not set")
         val directory = Files.createTempDirectory("stormfox-twig-")
         val source = Files.createDirectory(directory.resolve("templates"))
         val path = source.resolve("example.twig")
@@ -39,7 +42,7 @@ class MagoDiagnosticCompatibilityTest : BasePlatformTestCase() {
     }
 
     fun testOptionalCliPreservesWarningsForExcludedSource() {
-        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
+        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: throw AssumptionViolatedException("STORMFOX_MAGO_TEST_BINARY is not set")
         val directory = Files.createTempDirectory("stormfox-excluded-")
         val sourceDirectory = Files.createDirectory(directory.resolve("src"))
         val path = sourceDirectory.resolve("Sample.php")
@@ -74,7 +77,7 @@ class MagoDiagnosticCompatibilityTest : BasePlatformTestCase() {
     }
 
     fun testOptionalCliLintParsesReplacementFix() {
-        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
+        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: throw AssumptionViolatedException("STORMFOX_MAGO_TEST_BINARY is not set")
         val directory = Files.createTempDirectory("stormfox-lint-fix-")
         val sourceDirectory = Files.createDirectory(directory.resolve("src"))
         val path = sourceDirectory.resolve("Sample.php")

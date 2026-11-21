@@ -10,15 +10,18 @@ import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.util.TextRange
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.profile.codeInspection.InspectionProjectProfileManager
+import org.junit.AssumptionViolatedException
+import org.junit.runner.RunWith
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
 import java.nio.file.Files
 import java.util.concurrent.Callable
 import java.util.concurrent.TimeUnit
 
+@RunWith(AssumptionAwarePlatformTestRunner::class)
 class MagoGuardInspectionTest : BasePlatformTestCase() {
     fun testOptionalCliReturnsSkippedGuardWarningsWithEmptyDiagnostics() {
-        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
+        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: throw AssumptionViolatedException("STORMFOX_MAGO_TEST_BINARY is not set")
         val directory = Files.createTempDirectory("stormfox-guard-warnings-")
         val sourceDirectory = Files.createDirectory(directory.resolve("src"))
         val path = sourceDirectory.resolve("Sample.php")
@@ -43,7 +46,7 @@ class MagoGuardInspectionTest : BasePlatformTestCase() {
     }
 
     fun testOptionalCliHonorsStructuralConfigurationAndReadsSnapshotWithoutWriting() {
-        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: return
+        val binary = System.getenv("STORMFOX_MAGO_TEST_BINARY") ?: throw AssumptionViolatedException("STORMFOX_MAGO_TEST_BINARY is not set")
         val directory = Files.createTempDirectory("stormfox-guard-cli-")
         val sourceDirectory = Files.createDirectory(directory.resolve("src"))
         val path = sourceDirectory.resolve("Sample.php")
