@@ -3,10 +3,22 @@ package com.github.downace.stormfox.lint
 internal object MagoDiagnosticBatchFixes {
     data class Batch(val fix: MagoDiagnosticReport.Fix, val issues: List<MagoDiagnosticReport.Fix>)
 
+    // Use the same stable ordering for validation and application, including coincident insertions.
+    private fun ordered(edits: List<MagoDiagnosticReport.Edit>) =
+        edits.sortedWith(compareBy<MagoDiagnosticReport.Edit> { it.start }.thenBy { it.end })
+
+    fun validate(length: Int, edits: List<MagoDiagnosticReport.Edit>) {
+        var cursor = 0
+        for (edit in ordered(edits)) {
+            require(edit.start >= cursor && edit.end >= edit.start && edit.end <= length)
+            cursor = edit.end
+        }
+    }
+
     fun stitch(text: String, edits: List<MagoDiagnosticReport.Edit>): String {
         var cursor = 0
         return buildString {
-            for (edit in edits.sortedWith(compareBy<MagoDiagnosticReport.Edit> { it.start }.thenBy { it.end })) {
+            for (edit in ordered(edits)) {
                 require(edit.start >= cursor && edit.end >= edit.start && edit.end <= text.length)
                 append(text, cursor, edit.start)
                 append(edit.text)
@@ -35,11 +47,12 @@ internal object MagoDiagnosticBatchFixes {
         if (accepted.isEmpty()) return null
         val result = stitch(text, accepted)
         if (result == text) return null
-        return Batch(MagoDiagnosticReport.Fix(result, issues.maxOf { it.safety }, accepted), issues)
+        return Batch(MagoDiagnosticReport.Fix(issues.maxOf { it.safety }, accepted), issues)
     }
 
     fun variants(text: String, diagnostics: List<MagoDiagnosticReport.Diagnostic>): List<Batch> =
-        MagoDiagnosticReport.Safety.entries.mapNotNull { collect(text, diagnostics, it) }.distinctBy { it.fix.text }
+        MagoDiagnosticReport.Safety.entries.mapNotNull { collect(text, diagnostics, it) }
+            .distinctBy { stitch(text, it.fix.edits) }
 
     fun globalLabel(safety: MagoDiagnosticReport.Safety): String = when (safety) {
         MagoDiagnosticReport.Safety.SAFE -> "Mago: Fix all problems in file (safe only)"

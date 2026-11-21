@@ -83,7 +83,7 @@ class MagoAnalyzeInspectionTest : BasePlatformTestCase() {
         val json = """{"issues":[{"level":"Warning","code":"redundant-expression","message":"Redundant expression","edits":[[{"name":"Sample.php"},[{"range":{"start":0,"end":1},"new_text":[120],"safety":"safe"}]]],"annotations":[{"kind":"Primary","span":{"file_id":{"name":"Sample.php"},"start":{"offset":0},"end":{"offset":1}}}]}]}"""
         val diagnostic = MagoDiagnosticReport.parse(json, "abc", "Sample.php", null, MagoTool.ANALYZE).single()
         assertEquals(MagoTool.ANALYZE, diagnostic.source)
-        assertEquals("xbc", diagnostic.fix!!.text)
+        assertEquals("xbc", com.github.downace.stormfox.lint.MagoDiagnosticBatchFixes.stitch("abc", diagnostic.fix!!.edits))
         assertEquals(MagoDiagnosticReport.Safety.SAFE, diagnostic.fix!!.safety)
     }
 

@@ -154,7 +154,7 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
             val annotator = MagoLintAnnotator()
             val initial = annotator.collectInformation(myFixture.file)!!
             val diagnostic = MagoDiagnosticReport.Diagnostic(TextRange(6, 10), "problem", "rule", "Warning",
-                fix = MagoDiagnosticReport.Fix(initial.text, MagoDiagnosticReport.Safety.SAFE))
+                fix = MagoDiagnosticReport.Fix(MagoDiagnosticReport.Safety.SAFE, listOf(MagoDiagnosticReport.Edit(0, 0, ""))))
             assertNull(annotator.doAnnotate(initial))
             pending.poll(5, TimeUnit.SECONDS)!!.gate.complete(MagoDiagnosticRunner.Result.Success(listOf(diagnostic)))
             waitForFresh(service, initial, MagoTool.LINT)

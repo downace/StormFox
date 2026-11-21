@@ -1,10 +1,16 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
+import com.github.downace.stormfox.lint.MagoDiagnosticBatchFixes
 import org.junit.Assert.*
 import org.junit.Test
 
 class MagoLintFixTest {
+    @Test fun fixDoesNotRetainSnapshotOrResultText() {
+        val fields = MagoLintReport.Fix::class.java.declaredFields.filterNot { it.isSynthetic }
+        assertEquals(setOf("safety", "edits"), fields.map { it.name }.toSet())
+    }
+
     private fun edit(start: Int, end: Int, replacement: String, safety: String = "safe") =
         """{"range":{"start":$start,"end":$end},"new_text":[${replacement.toByteArray(Charsets.UTF_8).joinToString { (it.toInt() and 255).toString() }}],"safety":"$safety"}"""
 
@@ -17,7 +23,7 @@ class MagoLintFixTest {
 
     @Test fun cumulativeEditsUseOriginalSnapshotAndWorstSafety() {
         val fix = parse(batch(edit(2, 3, "XYZ"), edit(0, 1, "!", "unsafe"))).fix!!
-        assertEquals("!bXYZ", fix.text)
+        assertEquals("!bXYZ", MagoDiagnosticBatchFixes.stitch("abc", fix.edits))
         assertEquals(MagoLintReport.Safety.UNSAFE, fix.safety)
         assertEquals(listOf(MagoLintReport.Edit(2, 3, "XYZ"), MagoLintReport.Edit(0, 1, "!", MagoLintReport.Safety.UNSAFE)), fix.edits)
         assertEquals(MagoLintReport.Safety.POTENTIALLY_UNSAFE,
@@ -25,22 +31,22 @@ class MagoLintFixTest {
     }
 
     @Test fun supportsUnicodeAndEof() {
-        assertEquals("Ж😁!", parse(batch(edit(0, 2, "Ж"), edit(2, 6, "😁"), edit(6, 7, ""), edit(7, 7, "!")), "Я😀x").fix!!.text)
-        assertEquals("!", parse(batch(edit(0, 0, "!")), "").fix!!.text)
+        assertEquals("Ж😁!", parse(batch(edit(0, 2, "Ж"), edit(2, 6, "😁"), edit(6, 7, ""), edit(7, 7, "!")), "Я😀x").fix!!.let { MagoDiagnosticBatchFixes.stitch("Я😀x", it.edits) })
+        assertEquals("!", parse(batch(edit(0, 0, "!")), "").fix!!.let { MagoDiagnosticBatchFixes.stitch("", it.edits) })
     }
 
     @Test fun supportsLegacyStringReplacements() {
         val legacy = edit(0, 2, "Ж").replace("[208, 150]", "\"Ж\"")
         val fix = parse(batch(legacy, edit(2, 6, "😁", "unsafe")), "Я😀").fix!!
-        assertEquals("Ж😁", fix.text)
+        assertEquals("Ж😁", MagoDiagnosticBatchFixes.stitch("Я😀", fix.edits))
         assertEquals(MagoLintReport.Safety.UNSAFE, fix.safety)
         assertEquals(listOf(MagoLintReport.Edit(0, 1, "Ж"),
             MagoLintReport.Edit(1, 3, "😁", MagoLintReport.Safety.UNSAFE)), fix.edits)
-        assertEquals("abc", parse(batch(edit(0, 0, "").replace("[]", "\"\""))).fix!!.text)
+        assertEquals("abc", parse(batch(edit(0, 0, "").replace("[]", "\"\""))).fix!!.let { MagoDiagnosticBatchFixes.stitch("abc", it.edits) })
     }
 
     @Test fun coincidentAndBoundaryInsertionsPreserveOrder() {
-        assertEquals("a12X34c", parse(batch(edit(1, 1, "1"), edit(1, 2, "X"), edit(1, 1, "2"), edit(2, 2, "3"), edit(2, 2, "4"))).fix!!.text)
+        assertEquals("a12X34c", parse(batch(edit(1, 1, "1"), edit(1, 2, "X"), edit(1, 1, "2"), edit(2, 2, "3"), edit(2, 2, "4"))).fix!!.let { MagoDiagnosticBatchFixes.stitch("abc", it.edits) })
     }
 
     @Test fun invalidBatchesPreserveDiagnosticButHaveNoFix() {

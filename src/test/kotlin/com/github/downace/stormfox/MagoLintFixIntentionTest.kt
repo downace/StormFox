@@ -17,7 +17,7 @@ class MagoLintFixIntentionTest : BasePlatformTestCase() {
         safety: MagoLintReport.Safety = MagoLintReport.Safety.SAFE,
         options: List<IntentionAction> = emptyList(),
     ) = MagoApplyLintFixAction(
-        MagoLintReport.Fix("<?php echo 2;", safety),
+        MagoLintReport.Fix(safety, listOf(MagoLintReport.Edit(11, 12, "2"))),
         MagoRelatedNavigation.snapshotHash(myFixture.editor.document.text),
         myFixture.file.virtualFile,
         "prefer-first-class-callable",
@@ -50,7 +50,7 @@ class MagoLintFixIntentionTest : BasePlatformTestCase() {
         assertEquals("Fix prefer-first-class-callable (unsafe)", risky.getTooltipText())
 
         val child = MagoApplyLintFixAction(
-            MagoLintReport.Fix("<?php echo 2;", MagoLintReport.Safety.SAFE),
+            MagoLintReport.Fix(MagoLintReport.Safety.SAFE, listOf(MagoLintReport.Edit(11, 12, "2"))),
             MagoRelatedNavigation.snapshotHash(myFixture.editor.document.text), myFixture.file.virtualFile,
             null, "", overrideLabel = "Fix all problems in file (safe only)",
         ).asIntention() as MagoLintFixIntention
@@ -99,7 +99,7 @@ class MagoLintFixIntentionTest : BasePlatformTestCase() {
     fun testBatchPreviewIsEmptyWhenDisabledAndCurrentPreviewRemainsDelegateGenerated() {
         myFixture.configureByText("Sample.php", "<?php echo 1;")
         val batch = MagoApplyLintFixAction(
-            MagoLintReport.Fix("<?php echo 2;", MagoLintReport.Safety.SAFE),
+            MagoLintReport.Fix(MagoLintReport.Safety.SAFE, listOf(MagoLintReport.Edit(11, 12, "2"))),
             MagoRelatedNavigation.snapshotHash(myFixture.editor.document.text), myFixture.file.virtualFile,
             null, "", showPreview = false,
         ).asIntention()

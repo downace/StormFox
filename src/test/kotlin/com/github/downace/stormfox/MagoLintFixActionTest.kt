@@ -19,7 +19,7 @@ import java.lang.reflect.Proxy
 
 class MagoLintFixActionTest : BasePlatformTestCase() {
     private fun action(safety: MagoLintReport.Safety = MagoLintReport.Safety.SAFE) = MagoApplyLintFixAction(
-        MagoLintReport.Fix("<?php echo 2;", safety), MagoRelatedNavigation.snapshotHash(myFixture.editor.document.text),
+        MagoLintReport.Fix(safety, listOf(MagoLintReport.Edit(11, 12, "2"))), MagoRelatedNavigation.snapshotHash(myFixture.editor.document.text),
         myFixture.file.virtualFile, "example", "Issue",
     )
 

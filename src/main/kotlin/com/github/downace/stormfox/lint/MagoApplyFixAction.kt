@@ -56,7 +56,8 @@ internal class MagoApplyFixAction(
         if (!isCurrent(context)) return ModCommand.nop()
         return ModCommand.psiUpdate(context) { updater ->
             val file = updater.getWritable(context.file)
-            file.viewProvider.document.setText(fix.text)
+            val document = file.viewProvider.document
+            document.setText(MagoDiagnosticBatchFixes.stitch(document.text, fix.edits))
         }
     }
 }

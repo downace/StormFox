@@ -41,7 +41,7 @@ class MagoLintInspectionTest : BasePlatformTestCase() {
             if (method.name == "newAnnotation") builder else null
         } as AnnotationHolder
         val diagnostic = MagoLintReport.Diagnostic(TextRange(6, 10), "Avoid echo", "test", "Warning",
-            fix = MagoLintReport.Fix(text, MagoLintReport.Safety.SAFE))
+            fix = MagoLintReport.Fix(MagoLintReport.Safety.SAFE, listOf(MagoLintReport.Edit(0, 0, ""))))
         MagoLintAnnotator().apply(myFixture.file,
             MagoDiagnosticAnnotator.Report(snapshot(text), MagoLintRunner.Result.Success(listOf(diagnostic)), retained = true), holder)
         assertTrue(calls.containsAll(listOf("newAnnotation", "range", "tooltip", "create")))

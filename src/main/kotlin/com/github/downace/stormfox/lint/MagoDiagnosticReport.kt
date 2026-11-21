@@ -30,7 +30,7 @@ internal object MagoDiagnosticReport {
 
     enum class Safety { SAFE, POTENTIALLY_UNSAFE, UNSAFE }
     data class Edit(val start: Int, val end: Int, val text: String, val safety: Safety = Safety.SAFE)
-    data class Fix(val text: String, val safety: Safety, val edits: List<Edit> = emptyList())
+    data class Fix(val safety: Safety, val edits: List<Edit>)
 
     data class RelatedLocation(
         val message: String?,
@@ -168,7 +168,8 @@ internal object MagoDiagnosticReport {
                 }
             }
             if (edits.isEmpty()) return null
-            Fix(MagoDiagnosticBatchFixes.stitch(text, edits), safety, edits.toList())
+            MagoDiagnosticBatchFixes.validate(text.length, edits)
+            Fix(safety, edits.toList())
         } catch (e: MagoPathMappingException) {
             throw e
         } catch (_: RuntimeException) {
