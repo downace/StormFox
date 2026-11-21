@@ -36,6 +36,18 @@ class MagoTwigDiagnosticTest : BasePlatformTestCase() {
         assertNull(MagoConfigNavigation.ruleOffset("[linter.rules]\nfoo = true\n", "mago.toml", "twig:lint", "foo"))
     }
 
+    fun testTwigRunnerReturnsVersionProbeFailure() {
+        val root = Files.createTempDirectory("twig-lint-failed-probe-").toFile()
+        try {
+            val result = MagoDiagnosticRunner.run(File(root, "missing-mago").path, root, "",
+                File(root, "view.twig").path, "{{ x }}", MagoTool.TWIG_LINT)
+            assertTrue("A failed version probe must fail Twig lint: $result", result is MagoDiagnosticRunner.Result.Failure)
+            assertTrue((result as MagoDiagnosticRunner.Result.Failure).message.isNotBlank())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     fun testTwigRunnerDoesNotInvokeOldVersionAndInvokes160() {
         val root = Files.createTempDirectory("twig-lint-probe-").toFile()
         try {
@@ -48,8 +60,13 @@ class MagoTwigDiagnosticTest : BasePlatformTestCase() {
             fun command(version: String) =
                 "\"$java\" -cp \"$classpath\" ${TwigLintProbe::class.java.name} $version \"${marker.path.replace('\\', '/')}\""
             val path = File(root, "templates/view.twig").path
-            assertTrue(MagoDiagnosticRunner.run(command("1.59.0"), root, "", path, "{{ x }}",
-                MagoTool.TWIG_LINT) is MagoDiagnosticRunner.Result.Success)
+            val unknownResult = MagoDiagnosticRunner.run(command("unknown"), root, "", path, "{{ x }}", MagoTool.TWIG_LINT)
+            assertTrue("Unrecognized version must fail Twig lint: $unknownResult", unknownResult is MagoDiagnosticRunner.Result.Failure)
+            assertTrue((unknownResult as MagoDiagnosticRunner.Result.Failure).message.contains("version"))
+            assertFalse("An unrecognized version must not receive config or twig:lint commands", marker.exists())
+            val oldResult = MagoDiagnosticRunner.run(command("1.59.0"), root, "", path, "{{ x }}", MagoTool.TWIG_LINT)
+            assertTrue(oldResult is MagoDiagnosticRunner.Result.Success)
+            assertTrue((oldResult as MagoDiagnosticRunner.Result.Success).diagnostics.isEmpty())
             assertFalse("Old Mago must not receive config or twig:lint commands", marker.exists())
             assertTrue(MagoDiagnosticRunner.run(command("1.60.0"), root, "", path, "{{ x }}",
                 MagoTool.TWIG_LINT) is MagoDiagnosticRunner.Result.Success)

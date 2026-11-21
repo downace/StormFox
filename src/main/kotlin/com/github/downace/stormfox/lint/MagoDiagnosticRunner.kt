@@ -73,8 +73,11 @@ internal object MagoDiagnosticRunner {
         val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
         if (tool == MagoTool.TWIG_LINT) {
             val validation = MagoValidation.checkBinary(binary, workingDirectory, executionRoot)
-            val version = (validation as? MagoValidation.Result.Success)?.let { MagoVersion.parse(it.message) }
-            if (version?.supportsTwig != true) return Result.Success(emptyList())
+            // Validation owns logging of probe failures; do not disguise them as an unsupported Twig version.
+            if (validation is MagoValidation.Result.Failure) return Result.Failure(validation.message)
+            val version = MagoVersion.parse((validation as MagoValidation.Result.Success).message)
+                ?: return Result.Failure("Cannot determine Mago version for Twig lint")
+            if (!version.supportsTwig) return Result.Success(emptyList())
         }
         val globals = try { globalArguments(context, configPath) }
         catch (e: IllegalArgumentException) {
