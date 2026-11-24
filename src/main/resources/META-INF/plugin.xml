@@ -38,9 +38,8 @@
 
     <change-notes><![CDATA[
     <ul>
-        <li><b><a href="https://mago.carthage.software/1.60.0/en/tools/formatter/twig/">Format</a> and <a href="https://mago.carthage.software/1.60.0/en/tools/twig-linter/">Lint</a> Twig files with Mago.</b></li>
-        <li>Keep Mago settings separate for each project.</li>
-        <li>See rule descriptions, categories, and default severity levels in lint tooltips.</li>
+        <li>Improve error handling and recovery for formatting and inspections.</li>
+        <li>Reduce memory usage for files with many diagnostic fixes.</li>
     </ul>
     ]]></change-notes>
 
