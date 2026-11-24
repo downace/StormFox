@@ -117,27 +117,28 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
             val proseMarkup = prose.text.replace(Regex("\\s+"), " ")
             assertTrue(proseMarkup.contains("Enable <b>Reformat code</b> in <a href=\"actionsOnSave\">Actions on Save</a>"))
             assertTrue(proseMarkup.contains("to format files on save."))
-            layoutAt(root, 800)
-            val wideHeight = prose.height
-            val wideWidth = prose.width
             val freshConfigurable = MagoConfigurable(project)
-            val narrowSize = try {
+            try {
                 val freshRoot = freshConfigurable.createComponent() as Container
                 repeat(3) { layoutAt(freshRoot, 440) }
-                val freshProse = descendants(freshRoot).filterIsInstance<JEditorPane>()
+                val wrapped = descendants(freshRoot).filterIsInstance<JEditorPane>()
                     .single { it.text.contains("Mago Formatter replaces") }
-                val renderedText = freshProse.document.getText(0, freshProse.document.length)
-                    .replace(Regex("\\s+"), " ")
-                assertTrue("Wrapped prose retains its final sentence: $renderedText",
-                    renderedText.contains("to format files on save."))
-                freshProse.size
+                val renderedText = wrapped.document.getText(0, wrapped.document.length)
+                assertTrue(renderedText.replace(Regex("\\s+"), " ").contains("to format files on save."))
+                // Two widths can legitimately occupy the same number of lines; inspect the actual layout.
+                val glyphs = renderedText.indices.filter { !renderedText[it].isWhitespace() }
+                    .map { wrapped.modelToView2D(it).bounds2D }
+                assertTrue("Formatter paragraph should occupy multiple visual lines",
+                    glyphs.map { it.y }.distinct().size > 1)
+                val insets = wrapped.insets
+                glyphs.forEach { glyph ->
+                    assertTrue("Text must fit inside the paragraph: $glyph in ${wrapped.size}",
+                        glyph.x >= insets.left - 1 && glyph.maxX <= wrapped.width - insets.right + 1 &&
+                            glyph.y >= insets.top - 1 && glyph.maxY <= wrapped.height - insets.bottom + 1)
+                }
             } finally {
                 freshConfigurable.disposeUIResources()
             }
-            assertTrue("The narrow form should constrain the paragraph ($wideWidth -> ${narrowSize.width})",
-                narrowSize.width < wideWidth)
-            assertTrue("Formatter paragraph should wrap at a narrower available width ($wideHeight -> ${narrowSize.height})",
-                narrowSize.height > wideHeight)
 
             val inspectionLinks = descendants(root).filterIsInstance<com.intellij.ui.components.ActionLink>()
                 .filter { it.text in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }.toList()
