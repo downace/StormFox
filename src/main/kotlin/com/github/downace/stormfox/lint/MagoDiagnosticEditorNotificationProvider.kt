@@ -1,6 +1,10 @@
 package com.github.downace.stormfox.lint
 
 import com.github.downace.stormfox.status.MagoStatusSettingsNavigation
+import com.github.downace.stormfox.MagoVersionListener
+import com.github.downace.stormfox.MagoVersionService
+import com.github.downace.stormfox.isTwigFile
+import com.github.downace.stormfox.settings.MagoSettings
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.application.ModalityState
@@ -16,6 +20,7 @@ import com.intellij.ui.EditorNotificationProvider
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.function.Function
 import javax.swing.JComponent
+import java.io.File
 
 class MagoDiagnosticEditorNotificationProvider : EditorNotificationProvider {
     override fun collectNotificationData(
@@ -27,9 +32,16 @@ class MagoDiagnosticEditorNotificationProvider : EditorNotificationProvider {
         val failures = project.getService(MagoDiagnosticEditorNotificationService::class.java)
             .failures(file.path)
             .filter { MagoDiagnosticAnnotator.inspection(psiFile, it.tool) != null }
-        if (failures.isEmpty()) return null
+        val settings = MagoSettings.getInstance(project).state
+        val directory = project.basePath?.let(::File) ?: File(file.path).parentFile
+        val probeFailure = if (isTwigFile(psiFile) && MagoDiagnosticAnnotator.inspection(psiFile, MagoTool.TWIG_LINT) != null)
+            MagoVersionService.getInstance(project).cachedFailure(settings.magoPath, directory, settings.executionRoot)
+        else null
+        if (failures.isEmpty() && probeFailure == null) return null
 
-        val message = failures.joinToString("  ·  ") { "${it.tool.displayName}: ${it.error}" }
+        val message = (failures.filterNot { probeFailure != null && it.tool == MagoTool.TWIG_LINT }
+            .map { "${it.tool.displayName}: ${it.error}" } +
+            listOfNotNull(probeFailure?.let { "${MagoTool.TWIG_LINT.displayName}: $it" })).joinToString("  ·  ")
         return Function { editor ->
             EditorNotificationPanel(editor, EditorNotificationPanel.Status.Warning).apply {
                 text = message
@@ -50,6 +62,10 @@ internal class MagoDiagnosticEditorNotificationService(
     init {
         val activity = project.getService(MagoDiagnosticService::class.java).activity
         activity.addListener(this) { refreshLater() }
+        project.messageBus.connect(this).subscribe(MagoVersionListener.TOPIC, object : MagoVersionListener {
+            override fun versionChanged() = refreshLater()
+            override fun probeFailureChanged() = refreshLater()
+        })
         project.messageBus.connect(this).subscribe(ProfileChangeAdapter.TOPIC, object : ProfileChangeAdapter {
             override fun profileChanged(profile: com.intellij.codeInspection.InspectionProfile) = refreshLater()
             override fun profileActivated(

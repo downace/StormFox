@@ -6,6 +6,7 @@ import com.intellij.formatting.service.AsyncFormattingRequest
 import com.intellij.formatting.service.FormattingService
 import com.intellij.openapi.diagnostic.Logger
 import com.intellij.openapi.editor.Document
+import com.intellij.openapi.project.Project
 import com.intellij.psi.PsiFile
 import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.MagoVersionService
@@ -26,7 +27,9 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         val versions = MagoVersionService.getInstance(file.project)
         val version = versions.cachedVersion(directory)
         if (version == null) versions.ensureInitialized(directory)
-        return version?.supportsTwig == true
+        // Selection happens before the async task: unknown versions must reach that task,
+        // otherwise the user's first explicit reformat is silently lost.
+        return version?.supportsTwig != false
     }
 
     override fun getName(): String = TOOL_NAME
@@ -84,9 +87,18 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
         private val originalText: String,
         private val executionRoot: String = "",
         private val twig: Boolean = false,
+        private val project: () -> Project = { request.context.project },
         private val format: (MagoRunner.Cancellation) -> MagoRunner.Result = { cancellation ->
-            val version = MagoVersionService.getInstance(request.context.project).cachedVersion(binary, workingDirectory, executionRoot)
-            MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot, version, twig)
+            val versions = MagoVersionService.getInstance(project())
+            val version = versions.cachedVersion(binary, workingDirectory, executionRoot)
+            val token = if (version == null) versions.beginFormattingValidation(binary, workingDirectory, executionRoot) else null
+            try {
+                MagoRunner.format(binary, workingDirectory, configPath, logicalPath, originalText, cancellation, executionRoot, version, twig) {
+                    versions.finish(token, binary, it, workingDirectory, executionRoot)
+                }
+            } finally {
+                versions.abandonValidation(token, binary, workingDirectory, executionRoot)
+            }
         },
     ) : AsyncDocumentFormattingService.FormattingTask {
 
@@ -111,7 +123,7 @@ class MagoFormattingService : AsyncDocumentFormattingService() {
                         }
                     }
                     is MagoRunner.Result.Failure -> {
-                        notifyMagoError(request.context.project, result.message)
+                        notifyMagoError(project(), result.message)
                         request.onTextReady(null)
                     }
                 }

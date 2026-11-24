@@ -7,6 +7,7 @@ import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.format.MagoValidation
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
 import java.nio.file.Files
@@ -224,6 +225,13 @@ class MagoDiagnosticServiceTest : BasePlatformTestCase() {
             assertEquals("new-config.toml", current.snapshot.configPath)
             assertEquals(service.epoch, current.snapshot.generation)
             assertEquals(document.modificationStamp, current.snapshot.revision)
+            // A failure-only version update is for the Twig banner, not PHP dependency invalidation.
+            val versions = MagoVersionService.getInstance(project)
+            val versionToken = versions.beginValidation("new-mago", current.snapshot.workingDirectory, settings.executionRoot)!!
+            val epochBeforeFailure = service.epoch
+            versions.finish(versionToken, "new-mago", MagoValidation.Result.Failure("probe failed"),
+                current.snapshot.workingDirectory, settings.executionRoot)
+            assertEquals(epochBeforeFailure, service.epoch)
             assertTrue(annotated(annotator, staleReport).isEmpty())
             assertNull(annotator.doAnnotate(collected.copy(text = "different")))
             assertFalse(current.gate.isCompleted)

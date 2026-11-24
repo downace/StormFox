@@ -21,6 +21,7 @@ internal class MagoVersionService(private val project: Project, private val scop
     private data class Entry(
         val token: Long,
         var version: MagoVersion? = null,
+        var failure: String? = null,
         var failedAtNanos: Long? = null,
         var pending: Boolean = true,
     )
@@ -60,12 +61,17 @@ internal class MagoVersionService(private val project: Project, private val scop
         return synchronized(this) { entries[context]?.version }
     }
 
+    fun cachedFailure(command: String, directory: File?, root: String): String? {
+        val context = key(command, directory, root)
+        return synchronized(this) { entries[context]?.failure }
+    }
+
     /** Invalidate immediately, then coalesce settings changes before probing open projects. */
     fun refresh(snapshot: MagoSettingsSnapshot) {
         val binaryPath = snapshot.command
         val root = snapshot.executionRoot
         val changed = synchronized(this) {
-            val hadVersions = entries.values.any { it.version != null }
+            val changes = Pair(entries.values.any { it.version != null }, entries.values.any { it.failure != null })
             entries.clear()
             generation++
             pendingRefresh?.cancel(null)
@@ -77,9 +83,10 @@ internal class MagoVersionService(private val project: Project, private val scop
                     .forEach { ensureInitialized(it) }
                 if (safeWithoutProject(binaryPath, root)) ensureInitialized()
             }
-            hadVersions
+            changes
         }
-        if (changed) publishChange()
+        if (changed.first) publishChange()
+        if (changed.second) publishFailureChange()
     }
 
     private fun launchRefresh(command: String, directory: File?, root: String, token: Long) {
@@ -126,6 +133,15 @@ internal class MagoVersionService(private val project: Project, private val scop
         }
     }
 
+    /** A formatter must not invalidate a concurrent background probe that survives its cancellation. */
+    fun beginFormattingValidation(binaryPath: String, directory: File?, executionRoot: String): Long? {
+        val context = key(binaryPath, directory, executionRoot)
+        val settingsContext = current(directory)
+        return synchronized(this) {
+            if (context != settingsContext || entries[context]?.pending == true) null else beginLocked(context)
+        }
+    }
+
     fun abandonValidation(token: Long?, binaryPath: String, directory: File?, executionRoot: String) {
         val context = key(binaryPath, directory, executionRoot)
         synchronized(this) {
@@ -140,9 +156,9 @@ internal class MagoVersionService(private val project: Project, private val scop
     private fun beginLocked(context: Key): Long {
         // Keep the last known version while revalidating; the token prevents an older probe
         // from overwriting the result of a newer validation for the same context.
-        val previous = entries[context]?.version
+        val previous = entries[context]
         val token = ++generation
-        entries[context] = Entry(token, previous)
+        entries[context] = Entry(token, previous?.version, previous?.failure)
         while (entries.size > 64) entries.remove(entries.keys.first())
         return token
     }
@@ -158,6 +174,10 @@ internal class MagoVersionService(private val project: Project, private val scop
                 return
             }
             val next = (result as? MagoValidation.Result.Success)?.let { MagoVersion.parse(it.message) }
+            val failure = when (result) {
+                is MagoValidation.Result.Failure -> result.message
+                is MagoValidation.Result.Success -> if (next == null) "Cannot determine Mago version: ${result.message}" else null
+            }
             entry.pending = false
             entry.failedAtNanos = if (next == null) nanoTime() else null
             if (next != null) {
@@ -166,20 +186,28 @@ internal class MagoVersionService(private val project: Project, private val scop
                 )
                 (failureLogForTest ?: MagoFailureLogService.get()).success(failureContext, "validation", "version")
             }
-            if (next == entry.version) false else {
+            val versionChanged = next != entry.version
+            val failureChanged = failure != entry.failure
+            if (versionChanged || failureChanged) {
                 entry.version = next
-                if (next != null) {
+                entry.failure = failure
+                if (versionChanged && next != null) {
                     LOG.info("Accepted version $next")
                     acceptedVersionForTest?.invoke(next)
                 }
-                true
             }
+            Pair(versionChanged, failureChanged)
         }
-        if (changed) publishChange()
+        if (changed.first) publishChange()
+        if (changed.second) publishFailureChange()
     }
 
     private fun publishChange() {
         project.messageBus.syncPublisher(MagoVersionListener.TOPIC).versionChanged()
+    }
+
+    private fun publishFailureChange() {
+        project.messageBus.syncPublisher(MagoVersionListener.TOPIC).probeFailureChanged()
     }
 
     companion object {
@@ -201,6 +229,8 @@ internal class MagoVersionService(private val project: Project, private val scop
 
 internal interface MagoVersionListener {
     fun versionChanged()
+    // A failed initial probe does not change the version and must not invalidate PHP workers.
+    fun probeFailureChanged() {}
     companion object {
         @JvmField val TOPIC = Topic.create("Mago cached version changed", MagoVersionListener::class.java)
     }

@@ -72,6 +72,7 @@ internal object MagoRunner {
         executionRoot: String = "",
         cachedVersion: MagoVersion? = null,
         twig: Boolean = logicalPath.endsWith(".twig", ignoreCase = true),
+        onVersionProbed: (MagoValidation.Result) -> Unit = {},
     ): Result {
         cancellation.checkCanceled()
         val log = MagoFailureLogService.get()
@@ -84,11 +85,27 @@ internal object MagoRunner {
         val context = try {
             MagoExecutionContext(binary, workingDirectory, executionRoot).also { it.command() }
         } catch (e: IllegalArgumentException) {
-            return failed("command", "invalid", e.message ?: "Invalid Mago command")
+            val message = e.message ?: "Invalid Mago command"
+            if (cachedVersion == null) {
+                cancellation.deliver { onVersionProbed(MagoValidation.Result.Failure(message)) }
+                cancellation.checkCanceled()
+            }
+            return failed("command", "invalid", message)
         }
         val version = cachedVersion ?: when (val probe = probeVersion(context, workingDirectory, cancellation)) {
-            is VersionResult.Known -> probe.version
-            is VersionResult.Failure -> return failed("version", probe.category, probe.message)
+            is VersionResult.Known -> {
+                cancellation.deliver {
+                    onVersionProbed(if (probe.version.isSupported) MagoValidation.Result.Success("mago ${probe.version}")
+                        else MagoValidation.Result.Failure("Mago ${probe.version} is not supported. Use Mago 1.18.0 or newer."))
+                }
+                cancellation.checkCanceled()
+                probe.version
+            }
+            is VersionResult.Failure -> {
+                cancellation.deliver { onVersionProbed(MagoValidation.Result.Failure(probe.message)) }
+                cancellation.checkCanceled()
+                return failed("version", probe.category, probe.message)
+            }
         }
         log.success(key, "format", "version")
         if (twig && !version.supportsTwig) {
