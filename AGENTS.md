@@ -22,6 +22,8 @@
   configurable in the current Settings window before selecting an inspection: completion of
   `Settings.select` alone does not guarantee that its UI exists. Outside Settings, use the native
   inspection-settings action; the `showSettingsDialog` selection callback can run too early.
+  Inspection descriptions use `action://` with an `inspectionProfileActionProvider` for direct
+  selection in the current profile; `settings://Errors?…` instead fills the global Settings search.
 * **Settings loading must not re-enter service creation.** Pass a settings snapshot to consumers
   from `loadState`; a synchronous lookup of the settings service, even through another service,
   can deadlock initialization. Keep settings lookups outside locks needed by the loader. Test this

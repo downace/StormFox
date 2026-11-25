@@ -1,6 +1,15 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.settings.MagoConfigurable
+import com.github.downace.stormfox.settings.MagoInspectionProfileActionProvider
+import com.intellij.openapi.actionSystem.AnActionEvent
+import com.intellij.openapi.actionSystem.DataContext
+import com.intellij.profile.codeInspection.ui.SingleInspectionProfilePanel
+import com.intellij.profile.codeInspection.ProjectInspectionProfileManager
+import com.intellij.codeInspection.ex.InspectionToolWrapper
+import com.intellij.codeInspection.ex.LocalInspectionToolWrapper
+import com.github.downace.stormfox.lint.MagoLintInspection
+import com.github.downace.stormfox.lint.MagoTwigLintInspection
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurableGroup
 import com.intellij.openapi.options.SearchableConfigurable
@@ -22,6 +31,38 @@ import javax.swing.JEditorPane
 import javax.swing.event.HyperlinkEvent
 
 class MagoSettingsNavigationTest : BasePlatformTestCase() {
+    fun testInspectionDescriptionActionsSelectInCurrentProfile() {
+        val configurable = ConfigurableExtensionPointUtil.createProjectConfigurableForProvider(
+            project, ErrorsConfigurableProvider::class.java,
+        ) as ErrorsConfigurable
+        try {
+            val component = requireNotNull(configurable.createComponent())
+            configurable.reset()
+            val sourcePanel = descendants(component).filterIsInstance<SingleInspectionProfilePanel>().first()
+            var selected: String? = null
+            val panel = object : SingleInspectionProfilePanel(ProjectInspectionProfileManager.getInstance(project), sourcePanel.profile) {
+                override fun selectInspectionTool(name: String) { selected = name }
+                override fun getSelectedTool(): InspectionToolWrapper<*, *>? =
+                    when (selected) {
+                        "MagoLint" -> LocalInspectionToolWrapper(MagoLintInspection())
+                        "MagoTwigLint" -> LocalInspectionToolWrapper(MagoTwigLintInspection())
+                        else -> null
+                    }
+            }
+            val profile = panel.profile
+            val actions = MagoInspectionProfileActionProvider().getProfilePanelActions(panel).associateBy { it.actionId() }
+            for ((id, target) in listOf("stormfox.magoTwigLint" to "MagoTwigLint", "stormfox.magoLint" to "MagoLint")) {
+                val action = actions.getValue(id).action()
+                action.actionPerformed(AnActionEvent.createFromAnAction(action, null, "test", DataContext.EMPTY_CONTEXT))
+                assertEquals(target, selected)
+                assertSame(profile, panel.profile)
+                val description = javaClass.classLoader.getResource("inspectionDescriptions/${if (target == "MagoLint") "MagoTwigLint" else "MagoLint"}.html")!!.readText()
+                assertTrue(description.contains("action://$id"))
+            }
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
     fun testRegisteredProjectConfigurableUsesPhpInspectionNavigationLink() {
         val extension = ProjectExtensionPointName<ConfigurableEP<*>>("com.intellij.projectConfigurable")
             .getPoint(project).extensionList.single { it.instanceClass == MagoConfigurable::class.java.name }

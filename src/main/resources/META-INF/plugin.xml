@@ -48,6 +48,7 @@
     <depends>com.intellij.modules.json</depends>
 
     <extensions defaultExtensionNs="com.intellij">
+        <inspectionProfileActionProvider implementation="com.github.downace.stormfox.settings.MagoInspectionProfileActionProvider"/>
         <postStartupActivity implementation="com.github.downace.stormfox.MagoVersionProjectStartup"/>
         <statusBarWidgetFactory implementation="com.github.downace.stormfox.status.MagoStatusBarWidgetFactory"
                                 id="com.github.downace.stormfox.MagoStatusBarWidget"
