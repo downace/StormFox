@@ -150,7 +150,39 @@ internal object MagoDiagnosticTooltip {
         else -> null
     }
 
-    private fun renderRuleDescription(value: String): String =
+    private fun renderRuleDescription(value: String): String = buildString {
+        // Isolate code and URLs before applying emphasis: URL punctuation (notably underscores)
+        // is literal metadata, while code must remain inert rather than becoming a link.
+        val token = Regex("`[^`]+`|https?://[^\\s<>\"']+", RegexOption.IGNORE_CASE)
+        var offset = 0
+        for (match in token.findAll(value)) {
+            append(renderRuleDescriptionText(value.substring(offset, match.range.first)))
+            val part = match.value
+            if (part.startsWith('`')) {
+                append(renderText(part))
+            } else {
+                val url = part.trimEnd('.', ',', ';', ':', '!', '?')
+                    .let(::trimUnmatchedUrlClosers)
+                val suffix = part.substring(url.length)
+                append("<a href=\"${escapeHtml(url)}\">${escapeHtml(url)}</a>")
+                append(escapeHtml(suffix))
+            }
+            offset = match.range.last + 1
+        }
+        append(renderRuleDescriptionText(value.substring(offset)))
+    }
+
+    private fun trimUnmatchedUrlClosers(value: String): String {
+        var result = value
+        while (result.endsWith(')') && result.count { it == ')' } > result.count { it == '(' } ||
+            result.endsWith(']') && result.count { it == ']' } > result.count { it == '[' } ||
+            result.endsWith('}') && result.count { it == '}' } > result.count { it == '{' }) {
+            result = result.dropLast(1)
+        }
+        return result
+    }
+
+    private fun renderRuleDescriptionText(value: String): String =
         Regex("\\*\\*(.+?)\\*\\*").replace(renderText(value)) { "<b>${it.groupValues[1]}</b>" }
             .replace(Regex("(?<!\\*)\\*([^*]+)\\*(?!\\*)")) { "<i>${it.groupValues[1]}</i>" }
 

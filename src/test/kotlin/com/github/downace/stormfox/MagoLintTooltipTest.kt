@@ -189,6 +189,43 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         assertTrue(resolvedStyles, viewAttributes.any { it == "border-top-width=1px" })
     }
 
+    fun testRuleDescriptionLinksHttpUrlsWithoutFormattingUrlOrInlineCode() {
+        val description = "Read **docs** at https://example.com/a_b?x=1&y=2, " +
+            "then `https://example.com/not-a-link` or *more*."
+        val metadata = MagoRuleMetadata(code = "linked", description = description)
+        val html = MagoLintTooltip.expanded(diagnostic(code = metadata.code, help = "Help"), metadata)!!
+
+        assertTrue(html.contains("<b>docs</b> at <a href=\"https://example.com/a_b?x=1&amp;y=2\">" +
+            "https://example.com/a_b?x=1&amp;y=2</a>, then <code>https://example.com/not-a-link</code>"))
+        assertTrue(html.contains("or <i>more</i>."))
+        assertEquals(1, Regex("<a href=\"https://example\\.com").findAll(html).count())
+    }
+
+    fun testRuleDescriptionLinksLongReferencesOnSeparateLinesWithoutTruncation() {
+        val githubUrl = "https://github.com/phpmetrics/PhpMetrics/blob/c43217cd7783bbd54d0b8c1dd43f697bc36ef79d/src/Hal/Metric/Class_/Complexity/KanDefectVisitor.php"
+        val websiteUrl = "https://phpmetrics.org/"
+        val metadata = MagoRuleMetadata(
+            code = "kan-defect",
+            description = "References:\n$githubUrl\n$websiteUrl",
+        )
+        val html = MagoLintTooltip.expanded(diagnostic(code = metadata.code, help = "Help"), metadata)!!
+
+        assertTrue(html.contains("References:<br><a href=\"$githubUrl\">$githubUrl</a><br><a href=\"$websiteUrl\">$websiteUrl</a>"))
+        assertTrue(html.contains("Class_/Complexity/KanDefectVisitor.php"))
+        assertEquals(listOf(githubUrl, websiteUrl), Regex("<a href=\"([^\"]+)\">")
+            .findAll(html).map { it.groupValues[1] }
+            .filter { it == githubUrl || it == websiteUrl }.toList())
+    }
+
+    fun testRuleDescriptionKeepsBalancedUrlParenthesesAndExcludesUnmatchedCloser() {
+        val url = "https://example.com/reference_(details)"
+        val metadata = MagoRuleMetadata(code = "parentheses", description = "See $url).")
+        val html = MagoLintTooltip.expanded(diagnostic(code = metadata.code, help = "Help"), metadata)!!
+
+        assertTrue(html.contains("<a href=\"$url\">$url</a>)."))
+        assertFalse(html.contains("<a href=\"${url}).\">"))
+    }
+
     fun testRuleMetadataTextIsEscaped() {
         val metadata = MagoRuleMetadata(
             code = "safe", name = "Rule <unsafe>", category = "Safety & security",
