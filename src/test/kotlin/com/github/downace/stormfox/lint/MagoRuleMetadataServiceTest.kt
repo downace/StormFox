@@ -3,10 +3,16 @@ package com.github.downace.stormfox.lint
 import com.github.downace.stormfox.MagoVersionListener
 import com.github.downace.stormfox.settings.MagoSettings
 import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeout
 import java.io.File
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
@@ -93,6 +99,45 @@ class MagoRuleMetadataServiceTest : BasePlatformTestCase() {
             first.complete(null)
             service.loadForTest = null
             service.refreshForTest = null
+            settings.magoPath = oldCommand
+            settings.executionRoot = oldRoot
+        }
+    }
+
+    fun testLateResultCannotRepopulateCacheOrRefreshAfterDispose() {
+        val settings = MagoSettings.getInstance(project).state
+        val oldCommand = settings.magoPath
+        val oldRoot = settings.executionRoot
+        val parentJob = Job()
+        val scope = CoroutineScope(parentJob)
+        val service = MagoRuleMetadataService(project, scope)
+        val directory = File(project.basePath ?: ".")
+        val started = LinkedBlockingQueue<Boolean>()
+        val refreshed = LinkedBlockingQueue<Boolean>()
+        val gate = CompletableDeferred<Map<String, MagoRuleMetadata>?>()
+        var disposed = false
+        try {
+            settings.magoPath = "metadata-dispose-test"
+            settings.executionRoot = ""
+            service.refreshForTest = { refreshed.add(true) }
+            service.loadForTest = {
+                started.add(true)
+                // Simulate a loader that completes despite cancellation.
+                withContext(NonCancellable) { gate.await() }
+            }
+            service.request("metadata-dispose-test", directory, "")
+            assertEquals(true, started.poll(5, TimeUnit.SECONDS))
+            val loadJob = parentJob.children.single()
+            Disposer.dispose(service)
+            disposed = true
+            gate.complete(mapOf("x" to MagoRuleMetadata("x", name = "late")))
+            runBlocking { withTimeout(5_000) { loadJob.join() } }
+            assertNull(service.cached("x", "metadata-dispose-test", directory, ""))
+            assertNull(refreshed.poll())
+        } finally {
+            gate.complete(null)
+            if (!disposed) Disposer.dispose(service)
+            scope.cancel()
             settings.magoPath = oldCommand
             settings.executionRoot = oldRoot
         }

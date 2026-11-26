@@ -28,6 +28,14 @@ public class ProcessFixture {
                 System.exit(7);
             }
             case "wait" -> new java.util.concurrent.CountDownLatch(1).await();
+            case "worker-check" -> {
+                System.in.read();
+                System.out.print("stdout-ready\n");
+                System.err.print("stderr-ready\n");
+                System.out.flush();
+                System.err.flush();
+                new java.util.concurrent.CountDownLatch(1).await();
+            }
             case "blocked-write" -> {
                 System.in.read();
                 java.nio.file.Files.writeString(java.nio.file.Path.of(args[1]), "ready");

@@ -71,7 +71,8 @@ internal object MagoDiagnosticRunner {
 
     fun run(binary: String, workingDirectory: File, configPath: String, logicalPath: String, text: String,
              tool: MagoTool = MagoTool.LINT, indicator: ProgressIndicator? = null, executionRoot: String = "",
-             options: MagoDiagnosticOptions = MagoDiagnosticOptions()): Result {
+             options: MagoDiagnosticOptions = MagoDiagnosticOptions(), timeoutMillis: Int = tool.timeoutMillis,
+             processTimeoutMillis: Int = timeoutMillis): Result {
         ProgressManager.checkCanceled()
         val failures = MagoFailureLogService.get()
         val key = MagoFailureLog.context(binary.trim(), workingDirectory.absoluteFile.normalize().path, configPath, executionRoot)
@@ -95,7 +96,7 @@ internal object MagoDiagnosticRunner {
             log.debug("invalid diagnostic command", e)
             return failed("command", "invalid", "Invalid Mago command: ${e.message}")
         }
-        val source = execute(globals + listOf("config", "--show", "source"), workingDirectory, "", 0..0, indicator, tool.timeoutMillis)
+        val source = execute(globals + listOf("config", "--show", "source"), workingDirectory, "", 0..0, indicator, timeoutMillis)
         if (source is ProcessResult.Failure) return failed("source", source.category, source.message)
         source as ProcessResult.Success
         val workspace = try {
@@ -125,7 +126,7 @@ internal object MagoDiagnosticRunner {
             log.debug("cannot resolve diagnostic path", e)
             return failed("command", "path", "Cannot resolve Mago ${tool.command} path: ${e.message}")
         }
-        val output = execute(arguments, workingDirectory, text, 0..1, indicator, tool.timeoutMillis)
+        val output = execute(arguments, workingDirectory, text, 0..1, indicator, processTimeoutMillis)
         if (output is ProcessResult.Failure) return failed("process", output.category, output.message)
         output as ProcessResult.Success
         val result = parseOutput(output.stdout, output.stderr, output.exitCode, source.stderr, text, logicalPath, workspace, tool) {

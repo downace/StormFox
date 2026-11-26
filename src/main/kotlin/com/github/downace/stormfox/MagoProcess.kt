@@ -51,6 +51,8 @@ internal object MagoProcess {
         limit: Int? = null,
         checkCanceled: () -> Unit = {},
         attach: (Process) -> Unit = {},
+        // The writer latch signals its finally block; a cancelled Future can complete before that.
+        observe: (OSProcessHandler, CountDownLatch) -> Unit = { _, _ -> },
     ): Output {
         checkCanceled()
         val handler = OSProcessHandler(command)
@@ -60,6 +62,7 @@ internal object MagoProcess {
         val stderr = StringBuilder()
         val exceeded = AtomicBoolean()
         try {
+            observe(handler, writerDone)
             attach(handler.process)
             handler.addProcessListener(object : ProcessListener {
                 override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {

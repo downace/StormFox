@@ -6,6 +6,7 @@ import com.github.downace.stormfox.lint.MagoDiagnosticRunner
 import com.github.downace.stormfox.lint.MagoRuleMetadataKey
 import com.github.downace.stormfox.lint.MagoRuleMetadataRunner
 import com.github.downace.stormfox.lint.MagoTool
+import com.github.downace.stormfox.MagoVersion
 import com.intellij.openapi.progress.EmptyProgressIndicator
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
@@ -18,6 +19,32 @@ class MagoProcessAdaptersTest : BasePlatformTestCase() {
             AdapterFixture::class.java.name.replace('.', File.separatorChar) + ".class")
         val java = File(System.getProperty("java.home"), "bin/java").absolutePath
         return "\"${java.replace('\\', '/')}\" -cp \"${classpath.replace('\\', '/')}\" ${AdapterFixture::class.java.name} $mode"
+    }
+
+    fun testTimeoutMappings() {
+        val directory = Files.createTempDirectory("stormfox-adapter-timeouts").toFile()
+        try {
+            val binary = wrapper("known")
+            val formatMessage = "mago did not finish within 0 seconds"
+            assertEquals(MagoRunner.Result.Failure(formatMessage),
+                MagoRunner.format(binary, directory, "", "test.php", "input", timeoutMillis = 0))
+            assertEquals(MagoRunner.Result.Failure(formatMessage),
+                MagoRunner.format(binary, directory, "", "test.php", "input",
+                    cachedVersion = MagoVersion.parse("mago 1.60.0")!!, timeoutMillis = 0))
+            val validationMessage = MagoValidation.Result.Failure("mago did not answer within 0 seconds")
+            assertEquals(validationMessage, MagoValidation.checkBinaryUncached(binary, directory, timeoutMillis = 0))
+            assertEquals(validationMessage, MagoValidation.checkConfig(binary, "mago.toml", directory, timeoutMillis = 0))
+            assertEquals(MagoDiagnosticRunner.Result.Failure("Mago did not finish within 0 seconds"),
+                MagoDiagnosticRunner.run(binary, directory, "", File(directory, "test.php").path, "input", timeoutMillis = 0))
+            assertEquals(MagoDiagnosticRunner.Result.Failure("Mago did not finish within 0 seconds"),
+                MagoDiagnosticRunner.run(binary, directory, "", File(directory, "test.php").path, "input",
+                    timeoutMillis = 10_000, processTimeoutMillis = 0))
+            val messages = mutableListOf<String>()
+            val failures = MagoFailureLog(emit = { _, message -> messages.add(message) })
+            assertNull(MagoRuleMetadataRunner.load(MagoRuleMetadataKey(binary, directory.path, "", null),
+                EmptyProgressIndicator(), timeoutMillis = 0, failures = failures))
+            assertTrue(messages.toString(), messages.any { it.contains("rule-metadata load failed (timeout,") })
+        } finally { directory.deleteRecursively() }
     }
 
     fun testVersionAndValidationRequireEofAndCombineStreams() {

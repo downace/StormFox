@@ -139,8 +139,9 @@ internal object MagoRuleMetadataRunner {
         MagoExecutionContext(key.command, File(key.directory), key.root).command() +
             listOf("lint", "--list-rules", "--json", "--pedantic")
 
-    fun load(key: MagoRuleMetadataKey, indicator: com.intellij.openapi.progress.ProgressIndicator): Map<String, MagoRuleMetadata>? {
-        val failures = MagoFailureLogService.get()
+    fun load(key: MagoRuleMetadataKey, indicator: com.intellij.openapi.progress.ProgressIndicator,
+             timeoutMillis: Int = (TIMEOUT_SECONDS * 1000).toInt(),
+             failures: MagoFailureLog = MagoFailureLogService.get()): Map<String, MagoRuleMetadata>? {
         val context = MagoFailureLog.context(key.command, key.directory, key.root)
         fun failed(category: String): Map<String, MagoRuleMetadata>? {
             failures.failure(context, "rule-metadata", "load", category, key.directory)
@@ -150,7 +151,7 @@ internal object MagoRuleMetadataRunner {
             val args = arguments(key)
             if (log.isDebugEnabled) log.debug("Rule metadata command: $args")
             val command = GeneralCommandLine(args).withWorkDirectory(File(key.directory)).withCharset(StandardCharsets.UTF_8)
-            val output = MagoProcess.run(command, null, (TIMEOUT_SECONDS * 1000).toInt(), LIMIT, checkCanceled = indicator::checkCanceled)
+            val output = MagoProcess.run(command, null, timeoutMillis, LIMIT, checkCanceled = indicator::checkCanceled)
             val text = output.stdout
             if (log.isDebugEnabled) log.debug("Rule metadata exit ${output.exitCode}; stdout: $text; stderr: ${output.stderr}")
             if (output.exitCode != 0) return failed("exit")

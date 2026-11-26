@@ -72,6 +72,7 @@ internal object MagoRunner {
         executionRoot: String = "",
         cachedVersion: MagoVersion? = null,
         twig: Boolean = logicalPath.endsWith(".twig", ignoreCase = true),
+        timeoutMillis: Int = TIMEOUT_MS,
         onVersionProbed: (MagoValidation.Result) -> Unit = {},
     ): Result {
         cancellation.checkCanceled()
@@ -92,7 +93,7 @@ internal object MagoRunner {
             }
             return failed("command", "invalid", message)
         }
-        val version = cachedVersion ?: when (val probe = probeVersion(context, workingDirectory, cancellation)) {
+        val version = cachedVersion ?: when (val probe = probeVersion(context, workingDirectory, cancellation, timeoutMillis)) {
             is VersionResult.Known -> {
                 cancellation.deliver {
                     onVersionProbed(if (probe.version.isSupported) MagoValidation.Result.Success("mago ${probe.version}")
@@ -126,7 +127,7 @@ internal object MagoRunner {
 
         return try {
             val started = System.currentTimeMillis()
-            val output = MagoProcess.run(commandLine, text, TIMEOUT_MS, checkCanceled = cancellation::checkCanceled, attach = cancellation::attach)
+            val output = MagoProcess.run(commandLine, text, timeoutMillis, checkCanceled = cancellation::checkCanceled, attach = cancellation::attach)
             if (LOG.isDebugEnabled) LOG.debug("format finished in ${System.currentTimeMillis() - started}ms, exit code ${output.exitCode}, command: ${commandLine.commandLineString}; stdout: ${output.stdout}; stderr: ${output.stderr}")
             when {
                 output.exitCode != 0 -> failed("process", "exit-${output.exitCode}", errorMessage(output.stderr, output.exitCode))
@@ -136,7 +137,7 @@ internal object MagoRunner {
         } catch (e: ProcessCanceledException) { throw e
         } catch (e: CancellationException) { throw e
         } catch (e: MagoProcess.TimedOut) {
-            failed("process", "timeout", "mago did not finish within ${TIMEOUT_MS / 1000} seconds")
+            failed("process", "timeout", "mago did not finish within ${timeoutMillis / 1000} seconds")
         } catch (e: ExecutionException) {
             LOG.debug("formatter start failed", e)
             failed("process", "start", "Cannot start mago: ${e.message}")
@@ -151,12 +152,12 @@ internal object MagoRunner {
         data class Failure(val message: String, val category: String) : VersionResult
     }
 
-    private fun probeVersion(context: MagoExecutionContext, directory: File?, cancellation: Cancellation): VersionResult {
+    private fun probeVersion(context: MagoExecutionContext, directory: File?, cancellation: Cancellation, timeoutMillis: Int): VersionResult {
         cancellation.checkCanceled()
         val commandLine = GeneralCommandLine(context.command() + "--version").withCharset(StandardCharsets.UTF_8)
         if (directory != null) commandLine.withWorkDirectory(directory)
         return try {
-            val output = MagoProcess.run(commandLine, null, TIMEOUT_MS, checkCanceled = cancellation::checkCanceled, attach = cancellation::attach)
+            val output = MagoProcess.run(commandLine, null, timeoutMillis, checkCanceled = cancellation::checkCanceled, attach = cancellation::attach)
             if (LOG.isDebugEnabled) LOG.debug("formatter version command=${commandLine.commandLineString}; exit=${output.exitCode}; stdout=${output.stdout}; stderr=${output.stderr}")
             when {
                 output.exitCode != 0 -> VersionResult.Failure(errorMessage(output.stderr, output.exitCode), "exit-${output.exitCode}")
@@ -166,7 +167,7 @@ internal object MagoRunner {
         } catch (e: ProcessCanceledException) { throw e
         } catch (e: CancellationException) { throw e
         } catch (e: MagoProcess.TimedOut) {
-            VersionResult.Failure("mago did not finish within ${TIMEOUT_MS / 1000} seconds", "timeout")
+            VersionResult.Failure("mago did not finish within ${timeoutMillis / 1000} seconds", "timeout")
         } catch (e: ExecutionException) {
             VersionResult.Failure("Cannot start mago: ${e.message}", "start")
         } catch (e: Exception) {
