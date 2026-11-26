@@ -2,10 +2,41 @@ package com.github.downace.stormfox
 
 import com.github.downace.stormfox.lint.MagoDiagnosticRunner
 import com.github.downace.stormfox.lint.MagoTool
+import com.github.downace.stormfox.settings.MagoDiagnosticOptions
+import com.github.downace.stormfox.settings.MagoLintMode
+import com.github.downace.stormfox.settings.MagoGuardMode
 import junit.framework.TestCase
 import java.io.File
 
 class MagoDiagnosticRunnerTest : TestCase() {
+    fun testDiagnosticOptionsAreScopedAndPrecedePathSeparator() {
+        val dir = File(".").absoluteFile.normalize()
+        val options = MagoDiagnosticOptions(
+            lintMode = MagoLintMode.SEMANTICS, lintIgnoreBaseline = true, lintFixableOnly = true,
+            twigLintMode = MagoLintMode.PEDANTIC, twigLintFixableOnly = true,
+            analyzeIgnoreBaseline = true, analyzeNoStubs = true, analyzeSkipIgnores = true,
+            analyzeFixableOnly = true, guardMode = MagoGuardMode.STRUCTURAL,
+            guardIgnoreBaseline = true, guardNoStubs = true, guardFixableOnly = true)
+        fun args(tool: MagoTool, value: MagoDiagnosticOptions = options) =
+            MagoDiagnosticRunner.arguments("mago", "", File(dir, "file.php").path, dir, tool, options = value)
+                .drop(2)
+        assertEquals(listOf("--stdin-input", "--reporting-format", "json", "--semantics", "--ignore-baseline", "--fixable-only", "--", "file.php"), args(MagoTool.LINT))
+        assertEquals(listOf("--stdin-input", "--reporting-format", "json", "--pedantic", "--fixable-only", "--", "file.php"), args(MagoTool.TWIG_LINT))
+        assertEquals(listOf("--stdin-input", "--reporting-format", "json", "--ignore-baseline", "--no-stubs", "--skip-ignores", "--fixable-only", "--", "file.php"), args(MagoTool.ANALYZE))
+        assertEquals(listOf("--stdin-input", "--reporting-format", "json", "--structural", "--ignore-baseline", "--no-stubs", "--fixable-only", "--", "file.php"), args(MagoTool.GUARD))
+        assertTrue(args(MagoTool.GUARD, options.copy(guardMode = MagoGuardMode.PERIMETER)).contains("--perimeter"))
+        for (tool in MagoTool.entries) assertEquals(listOf("--stdin-input", "--reporting-format", "json", "--", "file.php"), args(tool, MagoDiagnosticOptions()))
+        for (tool in listOf(MagoTool.LINT, MagoTool.TWIG_LINT)) {
+            for ((mode, flag) in listOf(MagoLintMode.SEMANTICS to "--semantics", MagoLintMode.PEDANTIC to "--pedantic")) {
+                val selected = MagoDiagnosticOptions(lintMode = mode, twigLintMode = mode)
+                assertEquals(listOf("--stdin-input", "--reporting-format", "json", flag, "--", "file.php"), args(tool, selected))
+            }
+        }
+        for ((mode, flags) in listOf(MagoGuardMode.BOTH to emptyList(), MagoGuardMode.STRUCTURAL to listOf("--structural"), MagoGuardMode.PERIMETER to listOf("--perimeter"))) {
+            assertEquals(listOf("--stdin-input", "--reporting-format", "json") + flags + listOf("--", "file.php"),
+                args(MagoTool.GUARD, MagoDiagnosticOptions(guardMode = mode)))
+        }
+    }
     fun testArgumentsUseNestedWorkspaceAndProtectPathWithSpaces() {
         val workingDirectory = File("diagnostic project").absoluteFile.normalize()
         val workspace = File(workingDirectory, "nested workspace")

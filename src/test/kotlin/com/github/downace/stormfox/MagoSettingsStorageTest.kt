@@ -4,6 +4,9 @@ import com.github.downace.stormfox.settings.MagoSettings
 import com.github.downace.stormfox.settings.LegacyMagoSettings
 import com.github.downace.stormfox.settings.MagoSettingsListener
 import com.github.downace.stormfox.settings.MagoSettingsSnapshot
+import com.github.downace.stormfox.settings.MagoLintMode
+import com.github.downace.stormfox.settings.MagoGuardMode
+import com.github.downace.stormfox.settings.MagoDiagnosticOptions
 import com.github.downace.stormfox.lint.MagoDiagnosticService
 import com.intellij.openapi.components.RoamingType
 import com.intellij.openapi.components.State
@@ -135,6 +138,31 @@ class MagoSettingsProjectLifecycleTest : BasePlatformTestCase() {
 }
 
 class MagoSettingsSerializationTest : BasePlatformTestCase() {
+    fun testDiagnosticOptionsSerializeAndNotifyOnMutationAndLoad() {
+        val component = MagoSettings(project)
+        val events = mutableListOf<MagoSettingsSnapshot>()
+        project.messageBus.connect(testRootDisposable).subscribe(MagoSettingsListener.TOPIC,
+            MagoSettingsListener { events.add(it) })
+        assertEquals(MagoDiagnosticOptions(), component.state.diagnosticOptions())
+        component.state.lintMode = MagoLintMode.SEMANTICS
+        component.state.twigLintMode = MagoLintMode.PEDANTIC
+        component.state.analyzeNoStubs = true
+        component.state.guardMode = MagoGuardMode.PERIMETER
+        component.state.guardFixableOnly = true
+        assertEquals(5, events.size)
+        component.state.guardFixableOnly = true
+        assertEquals(5, events.size)
+        val restored = XmlSerializer.deserialize(XmlSerializer.serialize(component.state), MagoSettings.State::class.java)
+        assertEquals(component.state.diagnosticOptions(), restored.diagnosticOptions())
+        val old = component.state
+        component.loadState(MagoSettings.State())
+        assertEquals(MagoDiagnosticOptions(), events.last().diagnosticOptions)
+        val count = events.size
+        old.analyzeNoStubs = false
+        assertEquals(count, events.size)
+        component.loadState(restored)
+        assertEquals(restored.diagnosticOptions(), events.last().diagnosticOptions)
+    }
     fun testSettingsEventsTrackChangesAndDetachReplacedState() {
         val component = MagoSettings(project)
         val events = mutableListOf<MagoSettingsSnapshot>()
@@ -239,7 +267,7 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
         val diagnostics = project.getService(MagoDiagnosticService::class.java)
         val epoch = diagnostics.epoch
         val original = MagoSettings.getInstance(project).state.snapshot()
-        val xml = JDOMUtil.load("""<State><option name="magoPath" value="mago" /><option name="executionRoot" value="/app" /></State>""")
+        val xml = JDOMUtil.load("""<State><option name="magoPath" value="mago" /><option name="executionRoot" value="/app" /><option name="lintMode" value="PEDANTIC" /><option name="analyzeNoStubs" value="true" /></State>""")
         val loaded = XmlSerializer.deserialize(xml, MagoSettings.State::class.java)
         val component = MagoSettings(project)
         val executor = Executors.newSingleThreadExecutor { action -> Thread(action, "mago-cold-load-test").apply { isDaemon = true } }
@@ -253,6 +281,8 @@ class MagoSettingsSerializationTest : BasePlatformTestCase() {
             assertTrue(diagnostics.epoch > epoch)
             assertEquals("mago", component.state.magoPath)
             assertEquals("/app", component.state.executionRoot)
+            assertEquals(MagoLintMode.PEDANTIC, component.state.lintMode)
+            assertTrue(component.state.analyzeNoStubs)
         } finally {
             MagoSettings.lookupGuard = null
             executor.shutdownNow()

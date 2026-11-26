@@ -7,6 +7,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
 import com.intellij.openapi.util.TextRange
+import com.github.downace.stormfox.settings.MagoDiagnosticOptions
 import java.util.concurrent.atomic.AtomicLong
 
 internal data class MagoSnapshot(
@@ -19,6 +20,7 @@ internal data class MagoSnapshot(
     val environment: Map<String, String>,
     val generation: Long,
     val executionRoot: String = "",
+    val options: MagoDiagnosticOptions = MagoDiagnosticOptions(),
 )
 
 internal class MagoDiagnosticState<K>(

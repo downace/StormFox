@@ -1,6 +1,7 @@
 package com.github.downace.stormfox.lint
 
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.settings.MagoDiagnosticOptions
 import com.github.downace.stormfox.MagoVersionService
 import com.github.downace.stormfox.isTwigFile
 import com.intellij.codeInsight.daemon.HighlightDisplayKey
@@ -36,6 +37,7 @@ open class MagoDiagnosticAnnotator(
         val generation: Long = 0,
         val environment: Map<String, String> = System.getenv(),
         val executionRoot: String = "",
+        val options: MagoDiagnosticOptions = MagoDiagnosticOptions(),
     )
 
     class Report internal constructor(val snapshot: Snapshot, internal val result: MagoDiagnosticRunner.Result,
@@ -64,7 +66,8 @@ open class MagoDiagnosticAnnotator(
         val text = document?.text ?: file.text
         return Snapshot(text, virtualFile.path, workingDirectory, settings.magoPath.ifBlank { "mago" }, settings.configPath,
             document?.modificationStamp ?: file.modificationStamp, file.project, virtualFile,
-            file.project.getService(MagoDiagnosticService::class.java).epoch, executionRoot = settings.executionRoot)
+            file.project.getService(MagoDiagnosticService::class.java).epoch, executionRoot = settings.executionRoot,
+            options = settings.diagnosticOptions())
     }
 
     override fun doAnnotate(collectedInfo: Snapshot): Report? {
@@ -73,7 +76,8 @@ open class MagoDiagnosticAnnotator(
                 ?.request(collectedInfo.binary, collectedInfo.workingDirectory, collectedInfo.executionRoot)
         }
         if (batch) return Report(collectedInfo, MagoDiagnosticRunner.run(collectedInfo.binary, collectedInfo.workingDirectory,
-            collectedInfo.configPath, collectedInfo.logicalPath, collectedInfo.text, source, executionRoot = collectedInfo.executionRoot))
+            collectedInfo.configPath, collectedInfo.logicalPath, collectedInfo.text, source, executionRoot = collectedInfo.executionRoot,
+            options = collectedInfo.options))
         else {
             val project = collectedInfo.project ?: return null
             val service = project.getService(MagoDiagnosticService::class.java)
@@ -107,7 +111,7 @@ open class MagoDiagnosticAnnotator(
         if (snapshot.project != null) {
             val settings = MagoSettings.getInstance(file.project).state
             if (snapshot.binary != settings.magoPath.ifBlank { "mago" } || snapshot.configPath != settings.configPath ||
-                snapshot.executionRoot != settings.executionRoot ||
+                snapshot.executionRoot != settings.executionRoot || snapshot.options != settings.diagnosticOptions() ||
                 snapshot.generation != file.project.getService(MagoDiagnosticService::class.java).epoch) { skip("settings-or-generation"); return }
         }
         val (inspection, severity, key) = inspection(file, source, batchProfile) ?: run { skip("inspection-disabled"); return }
@@ -153,7 +157,8 @@ open class MagoDiagnosticAnnotator(
                 }
                 fun batchAction(batch: MagoDiagnosticBatchFixes.Batch, label: String, options: List<IntentionAction> = emptyList(), showPreview: Boolean = false) =
                     MagoApplyFixAction(batch.fix, snapshotHash, file.virtualFile,
-                        null, "", options, label, showPreview = showPreview, priority = PriorityAction.Priority.NORMAL)
+                        null, "", options, label, showPreview = showPreview, priority = PriorityAction.Priority.NORMAL,
+                        diagnosticOptions = snapshot.options)
                 fun globalChildLabel(safety: MagoDiagnosticReport.Safety) = when (safety) {
                     MagoDiagnosticReport.Safety.SAFE -> "Fix all problems in file (safe only)"
                     MagoDiagnosticReport.Safety.POTENTIALLY_UNSAFE -> "Fix all problems in file (including potentially unsafe)"
@@ -181,10 +186,10 @@ open class MagoDiagnosticAnnotator(
                         val options = suppressions + sameRule.asReversed().map { batch ->
                             MagoApplyFixAction(batch.fix, snapshotHash, file.virtualFile, null, "",
                                 baseLabel = "Fix all $code problems in file", showPreview = false,
-                                priority = PriorityAction.Priority.NORMAL).asIntention()
+                                priority = PriorityAction.Priority.NORMAL, diagnosticOptions = snapshot.options).asIntention()
                         }
                         builder.registerFix(MagoApplyFixAction(fix, it.snapshotHash, file.virtualFile, it.code, it.message,
-                            options, priority = PriorityAction.Priority.HIGH))
+                            options, priority = PriorityAction.Priority.HIGH, diagnosticOptions = snapshot.options))
                     }
                     if (it.fix == null && suppressions.isNotEmpty()) {
                         builder.registerFix(MagoSuppressAction(it, file.virtualFile, MagoSuppressAction.Mode.EXPECT, suppressions, primary = true))

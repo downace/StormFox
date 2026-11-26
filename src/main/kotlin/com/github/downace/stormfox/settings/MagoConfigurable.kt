@@ -20,12 +20,14 @@ import com.intellij.ui.components.ActionLink
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.builder.RightGap
+import com.intellij.ui.dsl.builder.Row
 import com.intellij.util.ui.InlineIconButton
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import com.github.downace.stormfox.format.MagoValidation
 import com.github.downace.stormfox.status.MagoStatusBarWidget
 import java.awt.Color
+import java.awt.Component
 import java.awt.Dimension
 import java.awt.event.ActionListener
 import java.io.File
@@ -37,7 +39,6 @@ import javax.swing.event.DocumentEvent
 private const val NOT_VALIDATED_TEXT = "Not validated"
 private const val CHECKING_TEXT = "Checking…"
 private const val SECTION_TITLE = "Formatter"
-private const val INSPECTIONS_SECTION_TITLE = "Inspections"
 private const val INSPECTIONS_CONFIGURABLE_ID = "Errors"
 private const val COMMAND_HELP =
     """<html>Enter one of:
@@ -52,6 +53,29 @@ private const val EXECUTION_ROOT_HELP =
 
 private val SECONDARY_TEXT_COLOR: Color = UIUtil.getContextHelpForeground()
 private val ERROR_TEXT_COLOR: Color = JBColor.namedColor("Label.errorForeground", UIUtil.getErrorForeground())
+
+internal object MagoConfigurableHelp {
+    const val LINT_MODE = """<ul>
+        <li><b>Syntax and semantics only</b> (<code>--semantics</code>): Skip linter rules and only perform basic syntax and semantic validation. This mode only checks that your PHP code parses correctly and has valid semantic structure, without applying any style or quality rules. Useful for quick syntax validation.</li>
+        <li><b>Normal</b> (no mode flag): Use the rules from the project configuration.</li>
+        <li><b>All rules</b> (<code>--pedantic</code>): Enable every available linter rule for maximum thoroughness. This overrides your configuration and enables all rules, including those disabled by default. The output will be extremely verbose and is not recommended for regular use. Useful for comprehensive code audits.</li>
+    </ul>"""
+    const val TWIG_LINT_MODE = """<ul>
+        <li><b>Syntax only</b> (<code>--semantics</code>): Skip linter rules and only check that templates parse.</li>
+        <li><b>Normal</b> (no mode flag): Use the rules from the project configuration.</li>
+        <li><b>All supported rules</b> (<code>--pedantic</code>): Enable every rule supported by the configured minimum Twig version.</li>
+    </ul>"""
+    const val GUARD_MODE = """<ul>
+        <li><b>Both</b> (no mode flag): Run structural and perimeter checks.</li>
+        <li><b>Structural</b> (<code>--structural</code>): Run only structural guard checks. When specified, only structural rules (naming conventions, modifiers, inheritance constraints) are checked. Perimeter rules are skipped.</li>
+        <li><b>Perimeter</b> (<code>--perimeter</code>): Run only perimeter guard checks. When specified, only perimeter rules (dependency boundaries, layer restrictions) are checked. Structural rules are skipped.</li>
+    </ul>"""
+
+    data class Option(val title: String, val description: String)
+
+    // HelpTooltip supports HTML in descriptions, but its title must remain plain text.
+    fun option(flag: String, description: String) = Option(flag, "<p>$description</p>")
+}
 
 class MagoConfigurable @JvmOverloads constructor(
     private val project: Project,
@@ -92,6 +116,48 @@ class MagoConfigurable @JvmOverloads constructor(
         private val phpFormatterCheckBox = JBCheckBox("PHP")
         private val twigFormatterCheckBox = JBCheckBox("Twig")
         private val showStatusWidgetCheckBox = JBCheckBox("Show Mago status bar widget")
+        private val lintModeBox = javax.swing.JComboBox(
+            arrayOf(MagoLintMode.SEMANTICS, MagoLintMode.NORMAL, MagoLintMode.PEDANTIC),
+        )
+        private val twigLintModeBox = javax.swing.JComboBox(
+            arrayOf(MagoLintMode.SEMANTICS, MagoLintMode.NORMAL, MagoLintMode.PEDANTIC),
+        )
+        private val guardModeBox = javax.swing.JComboBox(MagoGuardMode.values())
+        private val lintIgnoreBaseline = JBCheckBox("Ignore baseline")
+        private val lintFixableOnly = JBCheckBox("Show only fixable issues")
+        private val twigLintIgnoreBaseline = JBCheckBox("Ignore baseline")
+        private val twigLintFixableOnly = JBCheckBox("Show only fixable issues")
+        private val analyzeIgnoreBaseline = JBCheckBox("Ignore baseline")
+        private val analyzeNoStubs = JBCheckBox("Disable built-in and library stubs")
+        private val analyzeSkipIgnores = JBCheckBox("Report issues hidden by configured ignores")
+        private val analyzeFixableOnly = JBCheckBox("Show only fixable issues")
+        private val guardIgnoreBaseline = JBCheckBox("Ignore baseline")
+        private val guardNoStubs = JBCheckBox("Disable built-in and library stubs")
+        private val guardFixableOnly = JBCheckBox("Show only fixable issues")
+
+        private val lintModeLabels = mapOf(
+            MagoLintMode.SEMANTICS to "Syntax and semantics only",
+            MagoLintMode.NORMAL to "Normal",
+            MagoLintMode.PEDANTIC to "All rules",
+        )
+        private val guardModeLabels = mapOf(
+            MagoGuardMode.BOTH to "Both",
+            MagoGuardMode.STRUCTURAL to "Structural",
+            MagoGuardMode.PERIMETER to "Perimeter",
+        )
+
+        private fun <T> javax.swing.JComboBox<T>.useLabels(labels: Map<T, String>) {
+            setRenderer(object : javax.swing.DefaultListCellRenderer() {
+                override fun getListCellRendererComponent(
+                    list: javax.swing.JList<*>?, value: Any?, index: Int, isSelected: Boolean, cellHasFocus: Boolean,
+                ): Component {
+                    return super.getListCellRendererComponent(
+                        list, value?.let { candidate -> labels.entries.firstOrNull { it.key == candidate }?.value ?: candidate.toString() },
+                        index, isSelected, cellHasFocus,
+                    )
+                }
+            })
+        }
 
         private val binaryField = TextFieldWithBrowseButton().apply {
             toolTipText = "Enter a binary name, a full path, or a command that starts Mago. Do not include a Mago subcommand."
@@ -123,6 +189,13 @@ class MagoConfigurable @JvmOverloads constructor(
         )
 
         init {
+            lintModeBox.useLabels(lintModeLabels)
+            twigLintModeBox.useLabels(mapOf(
+                MagoLintMode.SEMANTICS to "Syntax only",
+                MagoLintMode.NORMAL to "Normal",
+                MagoLintMode.PEDANTIC to "All supported rules",
+            ))
+            guardModeBox.useLabels(guardModeLabels)
             val markValidationStale = object : DocumentAdapter() {
                 override fun textChanged(e: DocumentEvent) {
                     binaryRow.status.markStale()
@@ -167,12 +240,59 @@ class MagoConfigurable @JvmOverloads constructor(
                     ).resizableColumn()
                 }
             }
-            group(INSPECTIONS_SECTION_TITLE) {
-                row { cell(ActionLink("Linter") { selectInspection("MagoLint") }) }
-                row { cell(ActionLink("Analyzer") { selectInspection("MagoAnalyze") }) }
-                row { cell(ActionLink("Guard") { selectInspection("MagoGuard") }) }
-                row { cell(ActionLink("Twig Linter") { selectInspection("MagoTwigLint") }) }
+            collapsibleGroup("Linter") {
+                    row {
+                        label("Lint mode:")
+                        cell(lintModeBox)
+                        contextHelp(
+                            MagoConfigurableHelp.LINT_MODE,
+                            "Lint mode",
+                        )
+                    }
+                    row { option(lintIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
+                    row { option(lintFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
+                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoLint") }) }
             }
+            collapsibleGroup("Analyzer") {
+                    row { option(analyzeIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
+                    row { option(analyzeNoStubs, "--no-stubs", "Disable built-in PHP and library stubs for analysis. By default, the analyzer uses stubs for built-in PHP functions and popular libraries to provide accurate type information. Disabling this may result in more reported issues when external symbols can't be resolved.") }
+                    row { option(analyzeSkipIgnores, "--skip-ignores", "Ignore the <code>ignore</code> list from the analyzer configuration. Reports every issue the analyzer finds, including codes suppressed by the configured <code>ignore</code> entries. Useful for one-off runs that audit what is currently being hidden. Inline suppressions in the source are unaffected.") }
+                    row { option(analyzeFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
+                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoAnalyze") }) }
+            }
+            collapsibleGroup("Guard") {
+                    row {
+                        label("Guard mode:")
+                        cell(guardModeBox)
+                        contextHelp(
+                            MagoConfigurableHelp.GUARD_MODE,
+                            "Guard mode",
+                        )
+                    }
+                    row { option(guardIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
+                    row { option(guardNoStubs, "--no-stubs", "Disable built-in PHP and library stubs for checking. By default, guard uses stubs for built-in PHP functions and popular libraries to provide accurate symbol information. Disabling this may result in more warnings when external symbols can't be resolved.") }
+                    row { option(guardFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
+                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoGuard") }) }
+            }
+            collapsibleGroup("Twig Linter") {
+                    row {
+                        label("Lint mode:")
+                        cell(twigLintModeBox)
+                        contextHelp(
+                            MagoConfigurableHelp.TWIG_LINT_MODE,
+                            "Twig lint mode",
+                        )
+                    }
+                    row { option(twigLintIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
+                    row { option(twigLintFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
+                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoTwigLint") }) }
+            }
+        }
+
+        private fun Row.option(checkBox: JBCheckBox, flag: String, description: String) {
+            cell(checkBox)
+            val help = MagoConfigurableHelp.option(flag, description)
+            contextHelp(help.description, help.title)
         }
 
         fun isModified(): Boolean {
@@ -182,7 +302,21 @@ class MagoConfigurable @JvmOverloads constructor(
                 binaryField.text.trim() != state.magoPath.trim() ||
                 configField.text.trim() != state.configPath.trim() ||
                 executionRootField.text.trim() != state.executionRoot.trim() ||
-                showStatusWidgetCheckBox.isSelected != state.showStatusWidget
+                showStatusWidgetCheckBox.isSelected != state.showStatusWidget ||
+                lintModeBox.selectedItem != state.lintMode ||
+                lintIgnoreBaseline.isSelected != state.lintIgnoreBaseline ||
+                lintFixableOnly.isSelected != state.lintFixableOnly ||
+                twigLintModeBox.selectedItem != state.twigLintMode ||
+                twigLintIgnoreBaseline.isSelected != state.twigLintIgnoreBaseline ||
+                twigLintFixableOnly.isSelected != state.twigLintFixableOnly ||
+                analyzeIgnoreBaseline.isSelected != state.analyzeIgnoreBaseline ||
+                analyzeNoStubs.isSelected != state.analyzeNoStubs ||
+                analyzeSkipIgnores.isSelected != state.analyzeSkipIgnores ||
+                analyzeFixableOnly.isSelected != state.analyzeFixableOnly ||
+                guardModeBox.selectedItem != state.guardMode ||
+                guardIgnoreBaseline.isSelected != state.guardIgnoreBaseline ||
+                guardNoStubs.isSelected != state.guardNoStubs ||
+                guardFixableOnly.isSelected != state.guardFixableOnly
         }
 
         fun apply() {
@@ -196,6 +330,20 @@ class MagoConfigurable @JvmOverloads constructor(
                 state.showStatusWidget = showStatusWidgetCheckBox.isSelected
                 MagoStatusBarWidget.refreshOpenProjects()
             }
+            state.lintMode = lintModeBox.selectedItem as MagoLintMode
+            state.lintIgnoreBaseline = lintIgnoreBaseline.isSelected
+            state.lintFixableOnly = lintFixableOnly.isSelected
+            state.twigLintMode = twigLintModeBox.selectedItem as MagoLintMode
+            state.twigLintIgnoreBaseline = twigLintIgnoreBaseline.isSelected
+            state.twigLintFixableOnly = twigLintFixableOnly.isSelected
+            state.analyzeIgnoreBaseline = analyzeIgnoreBaseline.isSelected
+            state.analyzeNoStubs = analyzeNoStubs.isSelected
+            state.analyzeSkipIgnores = analyzeSkipIgnores.isSelected
+            state.analyzeFixableOnly = analyzeFixableOnly.isSelected
+            state.guardMode = guardModeBox.selectedItem as MagoGuardMode
+            state.guardIgnoreBaseline = guardIgnoreBaseline.isSelected
+            state.guardNoStubs = guardNoStubs.isSelected
+            state.guardFixableOnly = guardFixableOnly.isSelected
         }
 
         fun reset() {
@@ -206,6 +354,20 @@ class MagoConfigurable @JvmOverloads constructor(
             configField.text = state.configPath
             executionRootField.text = state.executionRoot
             showStatusWidgetCheckBox.isSelected = state.showStatusWidget
+            lintModeBox.selectedItem = state.lintMode
+            lintIgnoreBaseline.isSelected = state.lintIgnoreBaseline
+            lintFixableOnly.isSelected = state.lintFixableOnly
+            twigLintModeBox.selectedItem = state.twigLintMode
+            twigLintIgnoreBaseline.isSelected = state.twigLintIgnoreBaseline
+            twigLintFixableOnly.isSelected = state.twigLintFixableOnly
+            analyzeIgnoreBaseline.isSelected = state.analyzeIgnoreBaseline
+            analyzeNoStubs.isSelected = state.analyzeNoStubs
+            analyzeSkipIgnores.isSelected = state.analyzeSkipIgnores
+            analyzeFixableOnly.isSelected = state.analyzeFixableOnly
+            guardModeBox.selectedItem = state.guardMode
+            guardIgnoreBaseline.isSelected = state.guardIgnoreBaseline
+            guardNoStubs.isSelected = state.guardNoStubs
+            guardFixableOnly.isSelected = state.guardFixableOnly
             binaryRow.status.show(StatusLine.Kind.EMPTY, "")
             configRow.status.show(StatusLine.Kind.EMPTY, "")
         }

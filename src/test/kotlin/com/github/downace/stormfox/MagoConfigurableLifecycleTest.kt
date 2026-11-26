@@ -1,7 +1,10 @@
 package com.github.downace.stormfox
 
 import com.github.downace.stormfox.settings.MagoConfigurable
+import com.github.downace.stormfox.settings.MagoConfigurableHelp
 import com.github.downace.stormfox.settings.MagoSettings
+import com.github.downace.stormfox.settings.MagoLintMode
+import com.github.downace.stormfox.settings.MagoGuardMode
 import com.github.downace.stormfox.status.MagoStatusBarWidget
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import com.intellij.ui.ContextHelpLabel
@@ -24,14 +27,13 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
             val selector = labels.single { it.text == "Use Mago Formatter for:" }
             val prose = descendants(root).filterIsInstance<JEditorPane>()
                 .single { it.text.contains("Mago Formatter replaces") }
-            val inspection = descendants(root).single { it is com.intellij.ui.components.ActionLink && it.text == "Linter" }
+            val inspection = descendants(root).first { it is com.intellij.ui.components.ActionLink && it.text.contains("Configure inspection") }
             assertTrue("Formatter options should precede their explanation",
                 SwingUtilities.convertPoint(selector, Point(0, 0), root).y <
                     SwingUtilities.convertPoint(prose, Point(0, 0), root).y)
             val selectorX = SwingUtilities.convertPoint(selector, Point(0, 0), root).x
-            assertEquals(selectorX, SwingUtilities.convertPoint(inspection, Point(0, 0), root).x)
-            val sectionHeadings = labels.filter { it.text in listOf("Formatter", "Inspections") }
-            assertEquals(listOf("Formatter", "Inspections"), sectionHeadings.map { it.text }.toList())
+            val sectionHeadings = labels.filter { it.text == "Formatter" }
+            assertEquals(listOf("Formatter"), sectionHeadings.map { it.text }.toList())
             sectionHeadings.forEach { heading ->
                 assertTrue("Section body should be indented from ${heading.text}",
                     selectorX > SwingUtilities.convertPoint(heading, Point(0, 0), root).x)
@@ -81,7 +83,7 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
             val checkbox = descendants(root).filterIsInstance<JCheckBox>()
                 .single { it.text == "Show Mago status bar widget" }
 
-            assertEquals(2, helpLabels.size)
+            assertTrue(helpLabels.size > 2)
             assertEquals(1, descendants(root).filterIsInstance<JLabel>().count { it.text == "Mago command:" })
             assertEquals(1, descendants(root).filterIsInstance<JLabel>().count { it.text == "Execution project root:" })
             assertFalse(descendants(root).filterIsInstance<JLabel>().any { it.text?.contains("Enter one of:") == true })
@@ -141,13 +143,8 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
             }
 
             val inspectionLinks = descendants(root).filterIsInstance<com.intellij.ui.components.ActionLink>()
-                .filter { it.text in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }.toList()
-            assertEquals(listOf("Linter", "Analyzer", "Guard", "Twig Linter"), inspectionLinks.map { it.text })
-            inspectionLinks.zipWithNext().forEach { (before, after) ->
-                assertTrue("Inspection links should form a vertical list",
-                    SwingUtilities.convertPoint(after, Point(0, 0), root).y >
-                        SwingUtilities.convertPoint(before, Point(0, 0), root).y)
-            }
+                .filter { it.text == "Configure inspection" }.toList()
+            assertEquals(4, inspectionLinks.size)
         } finally {
             configurable.disposeUIResources()
         }
@@ -367,6 +364,112 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
         } finally {
             state.enabled = originalPhp
             state.twigEnabled = originalTwig
+            configurable.disposeUIResources()
+        }
+    }
+
+    fun testDiagnosticOptionsParticipateInResetApplyAndModifiedState() {
+        val configurable = MagoConfigurable(project)
+        val state = MagoSettings.getInstance(project).state
+        val original = listOf(
+            state.lintMode, state.lintIgnoreBaseline, state.lintFixableOnly,
+            state.twigLintMode, state.twigLintIgnoreBaseline, state.twigLintFixableOnly,
+            state.analyzeIgnoreBaseline, state.analyzeNoStubs, state.analyzeSkipIgnores, state.analyzeFixableOnly,
+            state.guardMode, state.guardIgnoreBaseline, state.guardNoStubs, state.guardFixableOnly,
+        )
+        try {
+            configurable.createComponent()
+            val ui = MagoConfigurable::class.java.getDeclaredField("ui").apply { isAccessible = true }.get(configurable)
+            fun field(name: String) = ui.javaClass.getDeclaredField(name).apply { isAccessible = true }.get(ui)
+            val lintMode = field("lintModeBox") as javax.swing.JComboBox<*>
+            val twigMode = field("twigLintModeBox") as javax.swing.JComboBox<*>
+            val guardMode = field("guardModeBox") as javax.swing.JComboBox<*>
+            val lintBaseline = field("lintIgnoreBaseline") as JCheckBox
+            val analyzeNoStubs = field("analyzeNoStubs") as JCheckBox
+            val guardFixable = field("guardFixableOnly") as JCheckBox
+
+            assertFalse(configurable.isModified())
+            lintMode.selectedItem = MagoLintMode.SEMANTICS
+            twigMode.selectedItem = MagoLintMode.PEDANTIC
+            guardMode.selectedItem = MagoGuardMode.PERIMETER
+            lintBaseline.isSelected = true
+            analyzeNoStubs.isSelected = true
+            guardFixable.isSelected = true
+            assertTrue(configurable.isModified())
+            configurable.apply()
+            assertEquals(MagoLintMode.SEMANTICS, state.lintMode)
+            assertEquals(MagoLintMode.PEDANTIC, state.twigLintMode)
+            assertEquals(MagoGuardMode.PERIMETER, state.guardMode)
+            assertTrue(state.lintIgnoreBaseline)
+            assertTrue(state.analyzeNoStubs)
+            assertTrue(state.guardFixableOnly)
+            assertFalse(configurable.isModified())
+
+            lintMode.selectedItem = MagoLintMode.NORMAL
+            lintBaseline.isSelected = false
+            configurable.reset()
+            assertEquals(MagoLintMode.SEMANTICS, lintMode.selectedItem)
+            assertTrue(lintBaseline.isSelected)
+            assertFalse(configurable.isModified())
+        } finally {
+            state.lintMode = original[0] as MagoLintMode
+            state.lintIgnoreBaseline = original[1] as Boolean
+            state.lintFixableOnly = original[2] as Boolean
+            state.twigLintMode = original[3] as MagoLintMode
+            state.twigLintIgnoreBaseline = original[4] as Boolean
+            state.twigLintFixableOnly = original[5] as Boolean
+            state.analyzeIgnoreBaseline = original[6] as Boolean
+            state.analyzeNoStubs = original[7] as Boolean
+            state.analyzeSkipIgnores = original[8] as Boolean
+            state.analyzeFixableOnly = original[9] as Boolean
+            state.guardMode = original[10] as MagoGuardMode
+            state.guardIgnoreBaseline = original[11] as Boolean
+            state.guardNoStubs = original[12] as Boolean
+            state.guardFixableOnly = original[13] as Boolean
+            configurable.disposeUIResources()
+        }
+    }
+
+    fun testDiagnosticSectionsAndModeCaptionsArePresent() {
+        val configurable = MagoConfigurable(project)
+        try {
+            val root = configurable.createComponent()
+            val labels = descendants(root).filterIsInstance<JLabel>().mapNotNull { it.text }.toList()
+            assertTrue(labels.containsAll(listOf("Linter", "Analyzer", "Guard", "Twig Linter")))
+            assertFalse(labels.contains("Inspections"))
+            assertFalse(descendants(root).filterIsInstance<JEditorPane>().any { it.text.contains("These Mago options") })
+            val ui = MagoConfigurable::class.java.getDeclaredField("ui").apply { isAccessible = true }.get(configurable)
+            fun combo(name: String) = ui.javaClass.getDeclaredField(name).apply { isAccessible = true }
+                .get(ui) as javax.swing.JComboBox<*>
+            fun captions(combo: javax.swing.JComboBox<*>): List<String> {
+                val renderer = combo.renderer as javax.swing.ListCellRenderer<Any?>
+                return (0 until combo.itemCount).map { index ->
+                    val value: Any? = combo.getItemAt(index)
+                    (renderer.getListCellRendererComponent(javax.swing.JList<Any?>(), value, index, false, false) as JLabel).text
+                }
+            }
+            assertEquals(listOf("Syntax and semantics only", "Normal", "All rules"), captions(combo("lintModeBox")))
+            assertEquals(listOf("Syntax only", "Normal", "All supported rules"), captions(combo("twigLintModeBox")))
+            assertEquals(listOf("Both", "Structural", "Perimeter"), captions(combo("guardModeBox")))
+            val helpIcons = descendants(root).filterIsInstance<ContextHelpLabel>().count()
+            assertTrue("Each diagnostic option should have a help icon", helpIcons >= 16)
+
+            val lintHelp = MagoConfigurableHelp.LINT_MODE
+            assertEquals(3, Regex("<li>").findAll(lintHelp).count())
+            assertTrue(lintHelp.indexOf("<b>Syntax and semantics only</b>") < lintHelp.indexOf("<b>Normal</b>"))
+            assertTrue(lintHelp.indexOf("<b>Normal</b>") < lintHelp.indexOf("<b>All rules</b>"))
+            assertTrue(lintHelp.contains("<code>--semantics</code>") && lintHelp.contains("<code>--pedantic</code>"))
+            assertEquals(3, Regex("<li>").findAll(MagoConfigurableHelp.TWIG_LINT_MODE).count())
+            assertEquals(3, Regex("<li>").findAll(MagoConfigurableHelp.GUARD_MODE).count())
+            assertTrue(MagoConfigurableHelp.GUARD_MODE.contains("<b>Structural</b>"))
+            assertTrue(MagoConfigurableHelp.GUARD_MODE.contains("<code>--perimeter</code>"))
+
+            val flagHelp = MagoConfigurableHelp.option("--ignore-baseline", "Ignore the baseline file.")
+            assertEquals("--ignore-baseline", flagHelp.title)
+            assertTrue(flagHelp.description.startsWith("<p>"))
+            assertFalse("The flag is the tooltip title and should not be repeated in its body",
+                flagHelp.description.contains(flagHelp.title))
+        } finally {
             configurable.disposeUIResources()
         }
     }

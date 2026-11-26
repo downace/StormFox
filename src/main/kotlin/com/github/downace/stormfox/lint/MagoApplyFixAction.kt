@@ -9,6 +9,8 @@ import com.intellij.modcommand.ModCommandAction
 import com.intellij.modcommand.Presentation
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.psi.PsiDocumentManager
+import com.github.downace.stormfox.settings.MagoDiagnosticOptions
+import com.github.downace.stormfox.settings.MagoSettings
 
 internal class MagoApplyFixAction(
     private val fix: MagoDiagnosticReport.Fix,
@@ -21,6 +23,7 @@ internal class MagoApplyFixAction(
     baseLabel: String = "Mago: Fix ${code ?: message}",
     private val showPreview: Boolean = true,
     private val priority: PriorityAction.Priority = PriorityAction.Priority.HIGH,
+    private val diagnosticOptions: MagoDiagnosticOptions? = null,
 ) : ModCommandAction {
     internal val label = overrideLabel ?: (baseLabel + when (fix.safety) {
         MagoDiagnosticReport.Safety.SAFE -> ""
@@ -42,6 +45,9 @@ internal class MagoApplyFixAction(
 
     private fun isCurrent(context: ActionContext): Boolean {
         if (context.file.virtualFile != sourceFile) return false
+        // Starting an IDE action can flush VFS events and advance the report-cache epoch.
+        // Validate effective options and source text here so that valid fixes still run.
+        if (diagnosticOptions != null && MagoSettings.getInstance(context.project).state.diagnosticOptions() != diagnosticOptions) return false
         val text = PsiDocumentManager.getInstance(context.project).getDocument(context.file)?.text ?: context.file.text
         return MagoRelatedNavigation.snapshotHash(text) == snapshotHash
     }

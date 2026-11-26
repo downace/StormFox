@@ -6,6 +6,7 @@ import com.github.downace.stormfox.MagoFailureLogService
 import com.github.downace.stormfox.MagoVersion
 import com.github.downace.stormfox.format.MagoValidation
 import com.github.downace.stormfox.MagoProcess
+import com.github.downace.stormfox.settings.MagoDiagnosticOptions
 import com.intellij.execution.ExecutionException
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.openapi.diagnostic.Logger
@@ -45,18 +46,20 @@ internal object MagoDiagnosticRunner {
     }
 
     fun arguments(binary: String, configPath: String, logicalPath: String, workingDirectory: File,
-                  tool: MagoTool = MagoTool.LINT, workspace: File = workingDirectory, executionRoot: String = ""): List<String> {
+                  tool: MagoTool = MagoTool.LINT, workspace: File = workingDirectory, executionRoot: String = "",
+                  options: MagoDiagnosticOptions = MagoDiagnosticOptions()): List<String> {
         val context = MagoExecutionContext(binary, workingDirectory, executionRoot)
-        return arguments(context, globalArguments(context, configPath), logicalPath, workspace, tool)
+        return arguments(context, globalArguments(context, configPath), logicalPath, workspace, tool, options)
     }
 
     private fun arguments(context: MagoExecutionContext, globals: List<String>, logicalPath: String,
-                          workspace: File, tool: MagoTool): List<String> {
+                          workspace: File, tool: MagoTool, options: MagoDiagnosticOptions): List<String> {
         // Validate mapped paths even though Mago receives a workspace-relative path.
         if (context.executionRoot.isNotBlank()) context.toExecution(logicalPath)
         val relativePath = workspace.toPath().toAbsolutePath().normalize()
             .relativize(File(logicalPath).toPath().toAbsolutePath().normalize()).toString().replace('\\', '/')
-        return globals + listOf(tool.command, "--stdin-input", "--reporting-format", "json", "--", relativePath)
+        return globals + listOf(tool.command, "--stdin-input", "--reporting-format", "json") +
+            options.arguments(tool) + listOf("--", relativePath)
     }
 
     private fun globalArguments(context: MagoExecutionContext, configPath: String): List<String> {
@@ -67,7 +70,8 @@ internal object MagoDiagnosticRunner {
     }
 
     fun run(binary: String, workingDirectory: File, configPath: String, logicalPath: String, text: String,
-             tool: MagoTool = MagoTool.LINT, indicator: ProgressIndicator? = null, executionRoot: String = ""): Result {
+             tool: MagoTool = MagoTool.LINT, indicator: ProgressIndicator? = null, executionRoot: String = "",
+             options: MagoDiagnosticOptions = MagoDiagnosticOptions()): Result {
         ProgressManager.checkCanceled()
         val failures = MagoFailureLogService.get()
         val key = MagoFailureLog.context(binary.trim(), workingDirectory.absoluteFile.normalize().path, configPath, executionRoot)
@@ -116,7 +120,7 @@ internal object MagoDiagnosticRunner {
             return failed("source", "invalid-report", "Mago returned an invalid source configuration: ${e.message}")
         }
         val arguments = try {
-            arguments(context, globals, logicalPath, workspace, tool)
+            arguments(context, globals, logicalPath, workspace, tool, options)
         } catch (e: IllegalArgumentException) {
             log.debug("cannot resolve diagnostic path", e)
             return failed("command", "path", "Cannot resolve Mago ${tool.command} path: ${e.message}")

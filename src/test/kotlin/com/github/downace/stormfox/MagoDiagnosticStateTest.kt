@@ -6,8 +6,30 @@ import junit.framework.TestCase
 import kotlinx.coroutines.*
 import java.io.File
 import com.intellij.openapi.util.TextRange
+import com.github.downace.stormfox.settings.MagoDiagnosticOptions
 
 class MagoDiagnosticStateTest : TestCase() {
+    fun testOptionsChangeRejectsInFlightAndRetainedResults() = runBlocking {
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        val gates = mutableListOf<CompletableDeferred<MagoLintRunner.Result>>()
+        val accepted = mutableListOf<MagoSnapshot>()
+        val state = MagoDiagnosticState<String>(scope, { _, _ ->
+            val gate = CompletableDeferred<MagoLintRunner.Result>().also { gates += it }
+            withContext(NonCancellable) { gate.await() }
+        }, { _, _, _ -> }, debounceMillis = 0, accepted = { _, snapshot, _ -> accepted += snapshot })
+        try {
+            val original = snapshot()
+            val changed = original.copy(options = MagoDiagnosticOptions(lintFixableOnly = true))
+            state.requestView("f", MagoTool.LINT, original)
+            assertNull(state.requestView("f", MagoTool.LINT, changed, verifiedCurrent = true))
+            gates[0].complete(MagoLintRunner.Result.Success(emptyList()))
+            assertTrue(accepted.isEmpty())
+            gates[1].complete(MagoLintRunner.Result.Success(emptyList()))
+            assertEquals(listOf(changed), accepted)
+            assertNotNull(state.requestView("f", MagoTool.LINT, changed))
+            assertNull(state.requestView("f", MagoTool.LINT, original, verifiedCurrent = true))
+        } finally { state.dispose(); scope.cancel() }
+    }
     fun testStaleSuccessIsNotAcceptedForRecovery() = runBlocking {
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
         val gates = mutableListOf<CompletableDeferred<MagoLintRunner.Result>>()

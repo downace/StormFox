@@ -35,6 +35,12 @@
   not delay lint findings. Editor annotators publish cached results, while batch inspection waits
   for complete results. Cache invalidation must account for configuration and dependency changes,
   not just the current document: analysis and architectural checks read other project files.
+* **Diagnostic options belong to the project, not the inspection profile.** Keep per-tool execution
+  options in collapsible sections on the Mago settings page; inspection profiles own enablement and
+  severity. Lint's normal, semantics-only and pedantic modes are one choice, as are Guard's both,
+  structural and perimeter modes. Include effective options in diagnostic freshness checks.
+  `--staged` conflicts with editor stdin; `--format-after-fix` requires the file-writing CLI fix path,
+  whereas IDE quick fixes apply returned edits to the document.
 * **Whole files only.** The formatting service does not offer `FORMAT_FRAGMENTS`, so selections and
   "changed lines only" ranges fall back to the IDE's own formatter.
 * **Success is silent.** A successful format says nothing. Only errors surface, as a balloon with an

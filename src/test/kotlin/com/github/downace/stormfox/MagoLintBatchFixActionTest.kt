@@ -6,6 +6,8 @@ import com.github.downace.stormfox.lint.MagoDiagnosticAnnotator
 import com.github.downace.stormfox.lint.MagoLintInspection
 import com.github.downace.stormfox.lint.MagoDiagnosticReport as MagoLintReport
 import com.github.downace.stormfox.lint.MagoDiagnosticRunner as MagoLintRunner
+import com.github.downace.stormfox.lint.MagoDiagnosticService
+import com.github.downace.stormfox.settings.MagoSettings
 import com.intellij.codeInsight.intention.IntentionAction
 import com.intellij.codeInsight.intention.IntentionActionWithOptions
 import com.intellij.codeInsight.intention.PriorityAction
@@ -57,8 +59,11 @@ class MagoLintBatchFixActionTest : BasePlatformTestCase() {
                 }
             }
         } as AnnotationHolder
+        val settings = MagoSettings.getInstance(project).state
+        val generation = project.getService(MagoDiagnosticService::class.java).epoch
         MagoLintAnnotator().apply(myFixture.file, MagoDiagnosticAnnotator.Report(
-            MagoDiagnosticAnnotator.Snapshot(source, path, File("."), "mago", ""),
+            MagoDiagnosticAnnotator.Snapshot(source, path, File("."), "mago", "",
+                generation = generation, options = settings.diagnosticOptions()),
             MagoLintRunner.Result.Success(diagnostics)), holder)
         return captured
     }

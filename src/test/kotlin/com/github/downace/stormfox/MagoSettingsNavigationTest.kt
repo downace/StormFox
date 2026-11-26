@@ -70,14 +70,14 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         try {
             val component = configurable.createComponent()
             val links = descendants(component).filterIsInstance<ActionLink>()
-                .filter { it.text in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }
-            assertEquals(listOf("Linter", "Analyzer", "Guard", "Twig Linter"), links.map { it.text }.toList())
-            assertEquals(
-                1,
-                descendants(component).filterIsInstance<com.intellij.ui.components.JBLabel>()
-                    .count { it.text == "Inspections" },
-            )
-            assertFalse(links.any { it.text.contains("Mago") || it.text.contains("inspection", ignoreCase = true) })
+                .filter { it.text == "Configure inspection" }
+            assertEquals(4, links.count())
+            assertTrue(links.all { it.text == "Configure inspection" })
+            val headings = descendants(component).filterIsInstance<com.intellij.ui.components.JBLabel>()
+                .mapNotNull { it.text }.filter { it in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }.toList()
+            assertEquals(listOf("Linter", "Analyzer", "Guard", "Twig Linter"), headings)
+            assertFalse(descendants(component).filterIsInstance<com.intellij.ui.components.JBLabel>().any { it.text == "Inspections" })
+            assertTrue(links.none { it.text.contains("Mago") })
         } finally {
             configurable.disposeUIResources()
         }
@@ -142,7 +142,7 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         try {
             val component = configurable.createComponent()
             val links = descendants(component).filterIsInstance<ActionLink>()
-                .filter { it.text in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }
+                .filter { it.text == "Configure inspection" }
                 .toList()
             assertSame(inspections, settings.find(ErrorsConfigurable::class.java))
             val expected = listOf("MagoLint", "MagoAnalyze", "MagoGuard", "MagoTwigLint")

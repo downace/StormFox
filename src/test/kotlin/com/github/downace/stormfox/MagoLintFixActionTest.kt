@@ -7,6 +7,7 @@ import com.github.downace.stormfox.lint.MagoLintAnnotator
 import com.github.downace.stormfox.lint.MagoDiagnosticAnnotator
 import com.github.downace.stormfox.lint.MagoLintInspection
 import com.github.downace.stormfox.lint.MagoDiagnosticRunner as MagoLintRunner
+import com.github.downace.stormfox.settings.MagoSettings
 import com.intellij.lang.annotation.AnnotationBuilder
 import com.intellij.lang.annotation.AnnotationHolder
 import com.intellij.modcommand.ActionContext
@@ -24,6 +25,22 @@ class MagoLintFixActionTest : BasePlatformTestCase() {
     )
 
     private fun context() = ActionContext.from(myFixture.editor, myFixture.file)
+
+    fun testDiagnosticOptionsInvalidateFix() {
+        myFixture.configureByText("Sample.php", "<?php echo 1;")
+        val settings = MagoSettings.getInstance(project).state
+        fun guarded() = MagoApplyLintFixAction(
+            MagoLintReport.Fix(MagoLintReport.Safety.SAFE, listOf(MagoLintReport.Edit(11, 12, "2"))),
+            MagoRelatedNavigation.snapshotHash(myFixture.editor.document.text), myFixture.file.virtualFile,
+            "example", "Issue", diagnosticOptions = settings.diagnosticOptions())
+        val first = guarded()
+        assertNotNull(first.getPresentation(context()))
+        settings.lintFixableOnly = true
+        assertNull(first.getPresentation(context()))
+        assertEquals(ModCommand.nop(), first.perform(context()))
+        settings.lintFixableOnly = false
+        assertNotNull(first.getPresentation(context()))
+    }
 
     fun testNativeCommandPreviewAndApplication() {
         myFixture.configureByText("Sample.php", "<?php echo 1;")

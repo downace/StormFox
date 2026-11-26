@@ -11,7 +11,7 @@ import com.intellij.openapi.project.Project
 import com.github.downace.stormfox.MagoVersionService
 import com.intellij.util.messages.Topic
 
-internal data class MagoSettingsSnapshot(val command: String, val executionRoot: String, val configPath: String = "")
+internal data class MagoSettingsSnapshot(val command: String, val executionRoot: String, val configPath: String = "", val diagnosticOptions: MagoDiagnosticOptions = MagoDiagnosticOptions())
 
 internal fun interface MagoSettingsListener {
     fun settingsChanged(snapshot: MagoSettingsSnapshot)
@@ -61,7 +61,57 @@ class MagoSettings(private val project: Project) : PersistentStateComponent<Mago
                 onPathChanged?.invoke(snapshot())
             }
 
-        internal fun snapshot() = MagoSettingsSnapshot(magoPath, executionRoot, configPath)
+        var lintMode: MagoLintMode = MagoLintMode.NORMAL
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var lintIgnoreBaseline: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var lintFixableOnly: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var twigLintMode: MagoLintMode = MagoLintMode.NORMAL
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var twigLintIgnoreBaseline: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var twigLintFixableOnly: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var analyzeIgnoreBaseline: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var analyzeNoStubs: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var analyzeSkipIgnores: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var analyzeFixableOnly: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var guardMode: MagoGuardMode = MagoGuardMode.BOTH
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var guardIgnoreBaseline: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var guardNoStubs: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        var guardFixableOnly: Boolean = false
+            set(value) { if (field != value) { field = value; onPathChanged?.invoke(snapshot()) } }
+
+        internal fun diagnosticOptions() = MagoDiagnosticOptions(
+            lintMode = lintMode, lintIgnoreBaseline = lintIgnoreBaseline, lintFixableOnly = lintFixableOnly,
+            twigLintMode = twigLintMode, twigLintIgnoreBaseline = twigLintIgnoreBaseline, twigLintFixableOnly = twigLintFixableOnly,
+            analyzeIgnoreBaseline = analyzeIgnoreBaseline, analyzeNoStubs = analyzeNoStubs,
+            analyzeSkipIgnores = analyzeSkipIgnores, analyzeFixableOnly = analyzeFixableOnly,
+            guardMode = guardMode, guardIgnoreBaseline = guardIgnoreBaseline,
+            guardNoStubs = guardNoStubs, guardFixableOnly = guardFixableOnly,
+        )
+        internal fun snapshot() = MagoSettingsSnapshot(magoPath, executionRoot, configPath, diagnosticOptions())
 
         @JvmField
         var enabled: Boolean = true
