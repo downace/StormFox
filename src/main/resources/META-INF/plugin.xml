@@ -38,8 +38,9 @@
 
     <change-notes><![CDATA[
     <ul>
-        <li>Improve error handling and recovery for formatting and inspections.</li>
-        <li>Reduce memory usage for files with many diagnostic fixes.</li>
+        <li><b>Refresh StormFox branding and package MIT license.</b></li>
+        <li>Make URLs in rule descriptions clickable in inspection tooltips.</li>
+        <li>Add links between PHP and Twig linter inspection settings.</li>
     </ul>
     ]]></change-notes>
 
