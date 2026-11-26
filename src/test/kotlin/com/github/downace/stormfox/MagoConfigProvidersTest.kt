@@ -36,7 +36,7 @@ class MagoConfigProvidersTest : BasePlatformTestCase() {
                 val file = LightVirtualFile(name)
                 val icon = iconProvider.getIcon(file, 0, project)
                 assertNotNull(name, icon)
-                assertEquals(16, icon!!.iconWidth)
+                assertEquals(15, icon!!.iconWidth)
                 assertEquals(16, icon.iconHeight)
                 assertTrue(name, schemaProvider.isAvailable(file))
             }

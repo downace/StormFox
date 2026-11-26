@@ -136,6 +136,12 @@ intellijPlatform {
 }
 
 tasks {
+    jar {
+        from(rootProject.file("LICENSE")) {
+            into("META-INF")
+        }
+    }
+
     test {
         useJUnit()
     }

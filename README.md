@@ -1,9 +1,17 @@
-# StormFox
+<h1 align="center">
+  <img src="docs/assets/stormfox-logo.png" alt="StormFox logo">
+  <br>
+  StormFox
+</h1>
 
-[<img src="https://img.shields.io/jetbrains/plugin/v/35857" alt="JetBrains Plugin Version">](https://plugins.jetbrains.com/plugin/35857)
-[<img src="https://img.shields.io/jetbrains/plugin/d/35857" alt="JetBrains Plugin Downloads">](https://plugins.jetbrains.com/plugin/35857)
+<p align="center"><strong><a href="https://mago.carthage.software/">Mago</a> toolchain integration for PhpStorm</strong></p>
 
-[Mago](https://mago.carthage.software/) integration for PhpStorm: format PHP and Twig code and inspect stylistic issues, inconsistencies, and code smells using your project's Mago configuration.
+<p align="center">
+  <a href="https://plugins.jetbrains.com/plugin/35857"><img src="https://img.shields.io/jetbrains/plugin/v/35857" alt="JetBrains Plugin Version"></a>
+  <a href="https://plugins.jetbrains.com/plugin/35857"><img src="https://img.shields.io/jetbrains/plugin/d/35857" alt="JetBrains Plugin Downloads"></a>
+</p>
+
+StormFox is an unofficial [Mago](https://mago.carthage.software/) integration for PhpStorm: format PHP and Twig code and inspect stylistic issues, inconsistencies, and code smells using your project's Mago configuration.
 
 ![PHP Mago inspections and Quick Fixes](docs/marketplace/screenshots/ide-3.gif)
 

@@ -9,11 +9,14 @@ import javax.swing.Icon
 
 class MagoConfigIconProvider : FileIconProvider {
     override fun getIcon(file: VirtualFile, flags: Int, project: Project?): Icon? =
-        if (MagoConfigFiles.matches(file)) ICON else null
+        if (MagoConfigFiles.matches(file)) icon else null
 
     private companion object {
-        val resource = requireNotNull(MagoConfigIconProvider::class.java.getResource("/icons/magoConfig.svg"))
-        val url = URI(resource.toExternalForm()).toURL()
-        val ICON = requireNotNull(IconLoader.findIcon(url))
+        private val icon: Icon by lazy {
+            val resource = requireNotNull(MagoConfigIconProvider::class.java.getResource("/icons/magoConfig.svg"))
+            // The resource URL's handler can retain the plugin classloader; rebuild it with a JDK handler.
+            val url = URI(resource.toExternalForm()).toURL()
+            requireNotNull(IconLoader.findIcon(url))
+        }
     }
 }

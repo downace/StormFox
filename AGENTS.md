@@ -68,9 +68,11 @@
   `AsyncDocumentFormattingService.FormattingTask` was a protected nested interface before build
   261, and a top-level class in another package cannot implement it. The task is therefore a
   nested class of `MagoFormattingService`.
-* **The icon is a 40×40 SVG with an embedded 80×80 raster.** The original artwork has tens of
-  thousands of paths; a raster keeps the file small, and the higher resolution keeps it sharp on
-  HiDPI screens.
+* **The plugin icon is a 40×40 SVG with an embedded 80×80 raster.** Keep the optimized PNG
+  embedded without re-encoding; the doubled resolution supports HiDPI screens.
+* **One configuration-file icon serves all UI modes and themes.** Preserve unload safety by
+  loading a normalized URL rather than retaining a plugin classloader in a path-based loader.
+  `MagoConfigIconOwnershipTest` guards loader ownership and identical light/dark rendering.
 * **The marketplace Description comes from `plugin.xml`** (`<description>`, HTML — the IDE renders it
   as HTML, and the marketplace renders it too).
 

@@ -4,6 +4,7 @@ import com.github.downace.stormfox.config.MagoConfigIconProvider
 import com.intellij.openapi.util.IconLoader
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import java.awt.image.BufferedImage
 import java.lang.reflect.Modifier
 import java.net.URI
 import java.net.URL
@@ -14,7 +15,15 @@ class MagoConfigIconOwnershipTest : BasePlatformTestCase() {
     fun testCachedIconLoadersHaveNoPluginOwner() {
         IconLoader.activate()
         val icon = requireNotNull(MagoConfigIconProvider().getIcon(LightVirtualFile("mago.toml"), 0, project))
-        assertEquals(16, icon.iconWidth)
+        assertOwnerlessIcon(icon, "/icons/magoConfig.svg")
+        assertSame(
+            icon,
+            MagoConfigIconProvider().getIcon(LightVirtualFile("mago.toml"), 0, project)
+        )
+    }
+
+    private fun assertOwnerlessIcon(icon: javax.swing.Icon, resourcePath: String) {
+        assertEquals(15, icon.iconWidth)
         assertEquals(16, icon.iconHeight)
         val loaders = fields(icon).filter { it.name == "loader" || it.name == "originalLoader" }
         assertEquals(setOf("loader", "originalLoader"), loaders.map { it.name }.toSet())
@@ -31,8 +40,32 @@ class MagoConfigIconOwnershipTest : BasePlatformTestCase() {
             val urlField = fields(loader).single { it.type == URL::class.java }
             urlField.isAccessible = true
             val url = urlField.get(loader) as URL
+            assertTrue(url.toExternalForm().endsWith(resourcePath))
             assertEquals("sun.net.www.protocol.${url.protocol}.Handler", handler(url).javaClass.name)
             assertNotSame(MagoConfigIconProvider::class.java.classLoader, handler(url).javaClass.classLoader)
+        }
+    }
+
+    fun testIconRendersIdenticallyInLightAndDark() {
+        IconLoader.activate()
+        val icon = requireNotNull(MagoConfigIconProvider().getIcon(LightVirtualFile("mago.toml"), 0, project))
+        val images = listOf(false, true).map { dark ->
+            val variant = IconLoader.getDarkIcon(icon, dark)
+            val image = BufferedImage(variant.iconWidth, variant.iconHeight, BufferedImage.TYPE_INT_ARGB)
+            val graphics = image.createGraphics()
+            try {
+                variant.paintIcon(null, graphics, 0, 0)
+            } finally {
+                graphics.dispose()
+            }
+            image
+        }
+        assertEquals(images[0].width, images[1].width)
+        assertEquals(images[0].height, images[1].height)
+        for (x in 0 until images[0].width) {
+            for (y in 0 until images[0].height) {
+                assertEquals("Pixel at ($x, $y)", images[0].getRGB(x, y), images[1].getRGB(x, y))
+            }
         }
     }
 
