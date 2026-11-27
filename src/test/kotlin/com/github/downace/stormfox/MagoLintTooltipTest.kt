@@ -51,6 +51,7 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         val compact = MagoLintTooltip.compact(diagnostic)
         assertTrue(compact.startsWith("<html><b>Mago</b>: This arrow function can be simplified to the <code>...</code> syntax."))
         assertTrue(compact.contains("<code>prefer-first-class-callable</code>"))
+        assertTrue(compact.contains("[Linter: <code>prefer-first-class-callable</code>]"))
         assertTrue(compact.indexOf("<code>prefer-first-class-callable</code>") < compact.indexOf("Details"))
         assertFalse(compact.contains("Issue from the rule"))
 
@@ -62,6 +63,21 @@ class MagoLintTooltipTest : BasePlatformTestCase() {
         assertEquals(1, "Use the callable syntax.".toRegex().findAll(details).count())
         assertTrue(details.contains("Rule documentation"))
         assertTrue(details.contains("Open Mago config"))
+    }
+
+    fun testToolNameLabelsRuleCodesAndOmitsLabelWhenCodeIsMissing() {
+        val labels = mapOf(
+            com.github.downace.stormfox.lint.MagoTool.LINT to "Linter",
+            com.github.downace.stormfox.lint.MagoTool.TWIG_LINT to "Twig Linter",
+            com.github.downace.stormfox.lint.MagoTool.ANALYZE to "Analyzer",
+            com.github.downace.stormfox.lint.MagoTool.GUARD to "Guard",
+        )
+        labels.forEach { (tool, label) ->
+            val withCode = MagoLintTooltip.compact(diagnostic(code = "some-rule").copy(source = tool))
+            assertTrue(withCode.contains("[$label: <code>some-rule</code>]"))
+            val withoutCode = MagoLintTooltip.compact(diagnostic(code = null).copy(source = tool))
+            assertFalse(withoutCode.contains("[$label:"))
+        }
     }
 
     fun testMetadataIsIgnoredForNonLintOrMismatchedRuleCode() {

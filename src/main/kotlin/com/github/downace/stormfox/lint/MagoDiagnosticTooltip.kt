@@ -13,7 +13,7 @@ internal object MagoDiagnosticTooltip {
         metadata: MagoRuleMetadata? = null,
     ): String {
         val message = diagnostic.summary
-        val code = diagnostic.code?.takeIf { it.isNotBlank() }?.let { " <code>${renderText(it)}</code>" }.orEmpty()
+        val code = diagnostic.code?.takeIf { it.isNotBlank() }?.let { " [${toolLabel(diagnostic.source)}: <code>${renderText(it)}</code>]" }.orEmpty()
         val extra = expanded(diagnostic, matchingMetadata(diagnostic, metadata))
         val links = buildList {
             if (extra != null) add(detailsLink(extra))
@@ -21,6 +21,13 @@ internal object MagoDiagnosticTooltip {
         }.joinToString(" &nbsp; ")
         val details = " &nbsp; $links"
         return "<html><b>Mago</b>: ${renderText(message)}$code$details</html>"
+    }
+
+    private fun toolLabel(source: MagoTool): String = when (source) {
+        MagoTool.LINT -> "Linter"
+        MagoTool.TWIG_LINT -> "Twig Linter"
+        MagoTool.ANALYZE -> "Analyzer"
+        MagoTool.GUARD -> "Guard"
     }
 
     fun expanded(
