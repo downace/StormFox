@@ -5,11 +5,14 @@ import com.github.downace.stormfox.settings.MagoInspectionProfileActionProvider
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.DataContext
 import com.intellij.profile.codeInspection.ui.SingleInspectionProfilePanel
+import com.intellij.codeInsight.daemon.HighlightDisplayKey
 import com.intellij.profile.codeInspection.ProjectInspectionProfileManager
 import com.intellij.codeInspection.ex.InspectionToolWrapper
 import com.intellij.codeInspection.ex.LocalInspectionToolWrapper
 import com.github.downace.stormfox.lint.MagoLintInspection
 import com.github.downace.stormfox.lint.MagoTwigLintInspection
+import com.github.downace.stormfox.lint.MagoAnalyzeInspection
+import com.github.downace.stormfox.lint.MagoGuardInspection
 import com.intellij.openapi.options.Configurable
 import com.intellij.openapi.options.ConfigurableGroup
 import com.intellij.openapi.options.SearchableConfigurable
@@ -20,14 +23,14 @@ import com.intellij.openapi.options.ex.Settings
 import com.intellij.ide.actionsOnSave.ActionsOnSaveConfigurable
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurable
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurableProvider
-import com.intellij.ui.components.ActionLink
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.jetbrains.concurrency.AsyncPromise
 import org.jetbrains.concurrency.Promise
 import java.awt.Component
 import java.awt.Container
-import javax.swing.JPanel
+import java.awt.event.HierarchyEvent
 import javax.swing.JEditorPane
+import javax.swing.JPanel
 import javax.swing.event.HyperlinkEvent
 
 class MagoSettingsNavigationTest : BasePlatformTestCase() {
@@ -69,15 +72,62 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         val configurable = extension.createConfigurable() as MagoConfigurable
         try {
             val component = configurable.createComponent()
-            val links = descendants(component).filterIsInstance<ActionLink>()
-                .filter { it.text == "Configure inspection" }
+            val links = inspectionLinks(component)
             assertEquals(4, links.count())
-            assertTrue(links.all { it.text == "Configure inspection" })
+            assertTrue(links.all { it.document.getText(0, it.document.length).contains("Configure inspection") })
             val headings = descendants(component).filterIsInstance<com.intellij.ui.components.JBLabel>()
                 .mapNotNull { it.text }.filter { it in listOf("Linter", "Analyzer", "Guard", "Twig Linter") }.toList()
             assertEquals(listOf("Linter", "Analyzer", "Guard", "Twig Linter"), headings)
             assertFalse(descendants(component).filterIsInstance<com.intellij.ui.components.JBLabel>().any { it.text == "Inspections" })
-            assertTrue(links.none { it.text.contains("Mago") })
+            assertTrue(links.none { it.document.getText(0, it.document.length).contains("Mago") })
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
+
+    fun testInspectionStatusesUseSavedProjectProfile() {
+        myFixture.enableInspections(MagoLintInspection(), MagoAnalyzeInspection(), MagoGuardInspection(), MagoTwigLintInspection())
+        val profile = ProjectInspectionProfileManager.getInstance(project).currentProfile
+        val configurable = MagoConfigurable(project)
+        try {
+            val component = configurable.createComponent()
+            val statuses = inspectionLinks(component)
+            val names = listOf("MagoLint", "MagoAnalyze", "MagoGuard", "MagoTwigLint")
+            assertEquals(4, statuses.size)
+            val originals = names.associateWith { name ->
+                profile.isToolEnabled(requireNotNull(HighlightDisplayKey.find(name)), null)
+            }
+            try {
+                names.forEachIndexed { index, name ->
+                    profile.setToolEnabled(name, false)
+                    configurable.reset()
+                    assertTrue(statuses[index].text.contains("<b>disabled</b>"))
+                    profile.setToolEnabled(name, true)
+                    configurable.reset()
+                    assertTrue(statuses[index].text.contains("<b>enabled</b>"))
+                }
+            } finally {
+                names.forEach { name ->
+                    profile.setToolEnabled(name, originals.getValue(name))
+                }
+            }
+            assertEquals(4, inspectionLinks(component).size)
+        } finally {
+            configurable.disposeUIResources()
+        }
+    }
+
+    fun testHidingSettingsPageDoesNotInitializeInspectionUi() {
+        val configurable = MagoConfigurable(project) {
+            error("Hiding the Mago settings page must not query Settings")
+        }
+        try {
+            val component = configurable.createComponent()
+            val event = HierarchyEvent(
+                component as Container, HierarchyEvent.HIERARCHY_CHANGED, component, component,
+                HierarchyEvent.SHOWING_CHANGED.toLong(),
+            )
+            component.hierarchyListeners.forEach { it.hierarchyChanged(event) }
         } finally {
             configurable.disposeUIResources()
         }
@@ -141,15 +191,13 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         val configurable = MagoConfigurable(project) { settings }
         try {
             val component = configurable.createComponent()
-            val links = descendants(component).filterIsInstance<ActionLink>()
-                .filter { it.text == "Configure inspection" }
-                .toList()
+            val links = inspectionLinks(component)
             assertSame(inspections, settings.find(ErrorsConfigurable::class.java))
             val expected = listOf("MagoLint", "MagoAnalyze", "MagoGuard", "MagoTwigLint")
             assertEquals(expected.size, links.size)
             links.forEachIndexed { index, link ->
                 selection = AsyncPromise()
-                link.doClick()
+                activateInspectionLink(link, expected[index])
                 assertEquals(expected.take(index), selected)
                 selection.setResult(Any())
                 assertEquals(expected.take(index + 1), selected)
@@ -201,5 +249,14 @@ class MagoSettingsNavigationTest : BasePlatformTestCase() {
         if (component is Container) {
             for (child in component.components) yieldAll(descendants(child))
         }
+    }
+
+    private fun inspectionLinks(component: Component): List<JEditorPane> =
+        descendants(component).filterIsInstance<JEditorPane>()
+            .filter { it.text.contains("href=\"inspection:") }.toList()
+
+    private fun activateInspectionLink(editor: JEditorPane, shortName: String) {
+        val event = HyperlinkEvent(editor, HyperlinkEvent.EventType.ACTIVATED, null, "inspection:$shortName")
+        editor.hyperlinkListeners.forEach { it.hyperlinkUpdate(event) }
     }
 }

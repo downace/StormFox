@@ -27,7 +27,8 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
             val selector = labels.single { it.text == "Use Mago Formatter for:" }
             val prose = descendants(root).filterIsInstance<JEditorPane>()
                 .single { it.text.contains("Mago Formatter replaces") }
-            val inspection = descendants(root).first { it is com.intellij.ui.components.ActionLink && it.text.contains("Configure inspection") }
+            val inspection = descendants(root).filterIsInstance<JEditorPane>()
+                .first { it.text.contains("href=\"inspection:") }
             assertTrue("Formatter options should precede their explanation",
                 SwingUtilities.convertPoint(selector, Point(0, 0), root).y <
                     SwingUtilities.convertPoint(prose, Point(0, 0), root).y)
@@ -142,8 +143,8 @@ class MagoConfigurableLifecycleTest : BasePlatformTestCase() {
                 freshConfigurable.disposeUIResources()
             }
 
-            val inspectionLinks = descendants(root).filterIsInstance<com.intellij.ui.components.ActionLink>()
-                .filter { it.text == "Configure inspection" }.toList()
+            val inspectionLinks = descendants(root).filterIsInstance<JEditorPane>()
+                .filter { it.text.contains("href=\"inspection:") }.toList()
             assertEquals(4, inspectionLinks.size)
         } finally {
             configurable.disposeUIResources()

@@ -1,6 +1,7 @@
 package com.github.downace.stormfox.settings
 
 import com.intellij.icons.AllIcons
+import com.intellij.codeInsight.daemon.HighlightDisplayKey
 import com.intellij.ide.DataManager
 import com.intellij.ide.actionsOnSave.ActionsOnSaveConfigurable
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -11,12 +12,12 @@ import com.intellij.openapi.options.ShowSettingsUtil
 import com.intellij.openapi.options.ex.Settings
 import com.intellij.openapi.project.Project
 import com.intellij.profile.codeInspection.ui.ErrorsConfigurable
+import com.intellij.profile.codeInspection.InspectionProjectProfileManager
 import com.intellij.openapi.ui.TextFieldWithBrowseButton
 import com.intellij.ui.DocumentAdapter
 import com.intellij.ui.JBColor
 import com.intellij.ui.components.JBCheckBox
 import com.intellij.ui.components.JBLabel
-import com.intellij.ui.components.ActionLink
 import com.intellij.ui.dsl.builder.Align
 import com.intellij.ui.dsl.builder.panel
 import com.intellij.ui.dsl.builder.RightGap
@@ -30,8 +31,11 @@ import java.awt.Color
 import java.awt.Component
 import java.awt.Dimension
 import java.awt.event.ActionListener
+import java.awt.event.HierarchyEvent
+import java.awt.event.HierarchyListener
 import java.io.File
 import javax.swing.JComponent
+import javax.swing.JEditorPane
 import javax.swing.JTextField
 import javax.swing.SwingConstants
 import javax.swing.event.DocumentEvent
@@ -134,6 +138,23 @@ class MagoConfigurable @JvmOverloads constructor(
         private val guardIgnoreBaseline = JBCheckBox("Ignore baseline")
         private val guardNoStubs = JBCheckBox("Disable built-in and library stubs")
         private val guardFixableOnly = JBCheckBox("Show only fixable issues")
+        private val inspectionStatuses = linkedMapOf<String, JEditorPane>()
+
+        private fun inspectionLink(shortName: String): JComponent {
+            val initialStatus = inspectionStatus(shortName)
+            return panel {
+                row {
+                    val content = text(initialStatus) { event ->
+                        if (event.eventType == javax.swing.event.HyperlinkEvent.EventType.ACTIVATED &&
+                            event.description == "inspection:$shortName"
+                        ) {
+                            selectInspection(shortName)
+                        }
+                    }
+                    inspectionStatuses[shortName] = content.component
+                }
+            }
+        }
 
         private val lintModeLabels = mapOf(
             MagoLintMode.SEMANTICS to "Syntax and semantics only",
@@ -251,14 +272,14 @@ class MagoConfigurable @JvmOverloads constructor(
                     }
                     row { option(lintIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
                     row { option(lintFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
-                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoLint") }) }
+                    row { cell(inspectionLink("MagoLint")) }
             }
             collapsibleGroup("Analyzer") {
                     row { option(analyzeIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
                     row { option(analyzeNoStubs, "--no-stubs", "Disable built-in PHP and library stubs for analysis. By default, the analyzer uses stubs for built-in PHP functions and popular libraries to provide accurate type information. Disabling this may result in more reported issues when external symbols can't be resolved.") }
                     row { option(analyzeSkipIgnores, "--skip-ignores", "Ignore the <code>ignore</code> list from the analyzer configuration. Reports every issue the analyzer finds, including codes suppressed by the configured <code>ignore</code> entries. Useful for one-off runs that audit what is currently being hidden. Inline suppressions in the source are unaffected.") }
                     row { option(analyzeFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
-                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoAnalyze") }) }
+                    row { cell(inspectionLink("MagoAnalyze")) }
             }
             collapsibleGroup("Guard") {
                     row {
@@ -272,7 +293,7 @@ class MagoConfigurable @JvmOverloads constructor(
                     row { option(guardIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
                     row { option(guardNoStubs, "--no-stubs", "Disable built-in PHP and library stubs for checking. By default, guard uses stubs for built-in PHP functions and popular libraries to provide accurate symbol information. Disabling this may result in more warnings when external symbols can't be resolved.") }
                     row { option(guardFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
-                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoGuard") }) }
+                    row { cell(inspectionLink("MagoGuard")) }
             }
             collapsibleGroup("Twig Linter") {
                     row {
@@ -285,8 +306,16 @@ class MagoConfigurable @JvmOverloads constructor(
                     }
                     row { option(twigLintIgnoreBaseline, "--ignore-baseline", "Ignore the baseline file, reporting all issues. When this flag is set, any configured or specified baseline file is ignored, and all issues are reported as if no baseline exists. This is useful for fixing issues that are currently suppressed by the baseline.") }
                     row { option(twigLintFixableOnly, "--fixable-only", "Filter the output to only show issues that can be automatically fixed. When enabled, only issues that have available automatic fixes will be displayed. This is useful when you want to focus on issues that can be resolved immediately.") }
-                    row { cell(ActionLink("Configure inspection") { selectInspection("MagoTwigLint") }) }
+                    row { cell(inspectionLink("MagoTwigLint")) }
             }
+        }.also { settingsPanel ->
+            settingsPanel.addHierarchyListener(HierarchyListener { event ->
+                if (event.changeFlags and HierarchyEvent.SHOWING_CHANGED.toLong() != 0L &&
+                    settingsPanel.isShowing
+                ) {
+                    refreshInspectionStatuses()
+                }
+            })
         }
 
         private fun Row.option(checkBox: JBCheckBox, flag: String, description: String) {
@@ -347,6 +376,7 @@ class MagoConfigurable @JvmOverloads constructor(
         }
 
         fun reset() {
+            refreshInspectionStatuses()
             val state = MagoSettings.getInstance(project).state
             phpFormatterCheckBox.isSelected = state.enabled
             twigFormatterCheckBox.isSelected = state.twigEnabled ?: state.enabled
@@ -371,6 +401,25 @@ class MagoConfigurable @JvmOverloads constructor(
             binaryRow.status.show(StatusLine.Kind.EMPTY, "")
             configRow.status.show(StatusLine.Kind.EMPTY, "")
         }
+
+        private fun refreshInspectionStatuses() {
+            val profile = InspectionProjectProfileManager.getInstance(project).currentProfile
+            inspectionStatuses.forEach { (shortName, label) ->
+                val key = HighlightDisplayKey.find(shortName)
+                val enabled = key != null && profile.isToolEnabled(key, null)
+                label.text = inspectionStatus(shortName, enabled)
+            }
+        }
+
+        private fun inspectionStatus(shortName: String): String {
+            val key = HighlightDisplayKey.find(shortName)
+            val enabled = key != null && InspectionProjectProfileManager.getInstance(project)
+                .currentProfile.isToolEnabled(key, null)
+            return inspectionStatus(shortName, enabled)
+        }
+
+        private fun inspectionStatus(shortName: String, enabled: Boolean): String =
+            """Inspection is <b>${if (enabled) "enabled" else "disabled"}</b>. <a href="inspection:$shortName">Configure inspection</a>"""
 
         private fun selectInspection(inspectionTool: String) {
             val settings = settingsForComponent(panel)
