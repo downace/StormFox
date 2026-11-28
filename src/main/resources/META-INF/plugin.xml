@@ -38,9 +38,9 @@
 
     <change-notes><![CDATA[
     <ul>
-        <li><b>Refresh StormFox branding and package MIT license.</b></li>
-        <li>Make URLs in rule descriptions clickable in inspection tooltips.</li>
-        <li>Add links between PHP and Twig linter inspection settings.</li>
+        <li><b>Configure diagnostic options and check modes for each Mago tool.</b></li>
+        <li>Show inspection status next to configuration links in Mago settings.</li>
+        <li>Identify the Mago tool in diagnostic tooltips.</li>
     </ul>
     ]]></change-notes>
 
